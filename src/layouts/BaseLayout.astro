@@ -1,6 +1,7 @@
 ---
 import "../styles/global.css";
 import { site } from "../data/site";
+import AmbientGeometry from "../components/AmbientGeometry";
 
 type Props = {
   title?: string;
@@ -41,6 +42,7 @@ const canonical = new URL(Astro.url.pathname, Astro.site);
     </script>
   </head>
   <body>
+    <AmbientGeometry client:load />
     <a class="skip-link" href="#main-content">跳到主要内容</a>
     <slot />
   </body>
