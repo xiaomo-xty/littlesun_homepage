@@ -1,0 +1,74 @@
+---
+import { ArrowCounterClockwiseIcon, ArrowLeftIcon, ArrowRightIcon } from "@phosphor-icons/react";
+import { projects } from "../data/projects";
+
+const current = projects[0];
+---
+
+<section id="projects" class="projects-section">
+  <div class="shell projects-grid">
+    <div class="projects-copy">
+      <p class="pixel-type">WORK DECK</p>
+      <h2>作品会增长，牌组不封顶。</h2>
+      <p>项目、经历与协作记录使用同一套证据结构：问题、过程与证据。</p>
+
+      <div class="deck-filters" aria-label="作品类型">
+        <button class="is-active" type="button">作品</button>
+        <button type="button">经历</button>
+        <button type="button">开源</button>
+        <button type="button">案例</button>
+      </div>
+
+      <div class="deck-index" aria-label="作品列表">
+        {projects.map((project, index) => (
+          <button class:list={[{ "is-active": index === 0 }]} type="button">
+            <span>{project.title}</span>
+            <small class="pixel-type">{project.kind.split(" / ")[0]}</small>
+          </button>
+        ))}
+      </div>
+
+      <div class="delivery-note">
+        <strong>先交付，再扩展。</strong>
+        <span>卡牌只承载已经发生、可以解释的工作。</span>
+      </div>
+    </div>
+
+    <div class="deck-stage">
+      <div class="deck-stack" aria-label={`${current.title} 项目卡`}>
+        <span class="deck-shadow-card deck-shadow-third" aria-hidden="true"></span>
+        <span class="deck-shadow-card deck-shadow-second" aria-hidden="true"></span>
+        <article class="project-card">
+          <header>
+            <span class="pixel-type">{current.kind}</span>
+            <strong>{current.status}</strong>
+          </header>
+          <h3>{current.title}</h3>
+          <p class="card-summary">{current.summary}</p>
+          <div class="project-media">
+            <span class="pixel-corner corner-nw" aria-hidden="true"></span>
+            <span class="pixel-corner corner-ne" aria-hidden="true"></span>
+            <span class="pixel-corner corner-sw" aria-hidden="true"></span>
+            <span class="pixel-corner corner-se" aria-hidden="true"></span>
+            <span>{current.mediaLabel}</span>
+          </div>
+          <p class="technology-line">{current.technologies.join(" / ")}</p>
+          <button class="flip-control" type="button">
+            <ArrowCounterClockwiseIcon size={22} weight="bold" />
+            <span>查看背面</span>
+          </button>
+        </article>
+      </div>
+
+      <div class="deck-controls">
+        <button class="icon-command" type="button" aria-label="上一张作品" title="上一张作品">
+          <ArrowLeftIcon size={24} weight="bold" />
+        </button>
+        <strong>{current.title}</strong>
+        <button class="icon-command is-primary" type="button" aria-label="下一张作品" title="下一张作品">
+          <ArrowRightIcon size={24} weight="bold" />
+        </button>
+      </div>
+    </div>
+  </div>
+</section>
