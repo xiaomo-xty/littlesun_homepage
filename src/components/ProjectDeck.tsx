@@ -5,8 +5,10 @@ import {
   InfoIcon,
 } from "@phosphor-icons/react";
 import {
+  AnimatePresence,
   motion,
   type PanInfo,
+  useAnimate,
   useInView,
   useMotionValue,
   useReducedMotion,
@@ -17,7 +19,16 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { projects, type Project } from "../data/projects";
 
 type Filter = "all" | Project["category"];
-type DeckPhase = "dealing" | "idle" | "covering" | "retracting" | "drawing" | "revealing";
+
+type DeckTransition = {
+  token: number;
+  direction: 1 | -1;
+  from: Project;
+  to: Project;
+  toIndex: number;
+  nextFilter?: Filter;
+  targetProjects: Project[];
+};
 
 const filters: Array<{ id: Filter; label: string }> = [
   { id: "all", label: "全部" },
@@ -28,18 +39,8 @@ const filters: Array<{ id: Filter; label: string }> = [
 ];
 
 const burstPixels = [
-  [-92, -58],
-  [-62, -94],
-  [-24, -74],
-  [20, -102],
-  [62, -68],
-  [96, -28],
-  [-100, 16],
-  [-72, 64],
-  [-24, 92],
-  [20, 76],
-  [70, 88],
-  [102, 34],
+  [-92, -58], [-62, -94], [-24, -74], [20, -102], [62, -68], [96, -28],
+  [-100, 16], [-72, 64], [-24, 92], [20, 76], [70, 88], [102, 34],
 ] as const;
 
 const cardSpring = {
@@ -49,9 +50,13 @@ const cardSpring = {
   mass: 0.72,
 } as const;
 
-const centerPose = { opacity: 1, x: "0%", y: 0, scale: 1, rotateZ: 0, zIndex: 4 };
-const deckPose = { opacity: 0.7, x: "10%", y: 24, scale: 0.94, rotateZ: 5.5, zIndex: 1 };
-const dealSourcePose = { opacity: 0, x: "42%", y: -104, scale: 0.84, rotateZ: 15, zIndex: 4 };
+const drawEase = [0.16, 1, 0.3, 1] as const;
+const flipEase = [0.65, 0, 0.35, 1] as const;
+const retractEase = [0.4, 0, 1, 1] as const;
+
+function getProjects(filter: Filter) {
+  return filter === "all" ? projects : projects.filter((project) => project.category === filter);
+}
 
 function DecorativeCardBack() {
   return (
@@ -68,21 +73,141 @@ function DecorativeCardBack() {
   );
 }
 
+type CardFrontProps = {
+  project: Project;
+  position: number;
+  total: number;
+  instanceKey: string;
+  detailsOpen: boolean;
+  onToggleDetails: () => void;
+  interactive?: boolean;
+};
+
+function CardFront({
+  project,
+  position,
+  total,
+  instanceKey,
+  detailsOpen,
+  onToggleDetails,
+  interactive = true,
+}: CardFrontProps) {
+  const detailsId = `details-${project.id}-${instanceKey}`;
+
+  return (
+    <article
+      className={`project-card card-face card-front${detailsOpen ? " is-details-open" : ""}`}
+      aria-hidden={!interactive}
+      inert={interactive ? undefined : true}
+    >
+      <header>
+        <span className="pixel-type">{project.kind}</span>
+        <span className="card-status">{project.status}</span>
+      </header>
+
+      <div className="card-title-row">
+        <h3>{project.title}</h3>
+        <span className="card-number pixel-type">
+          {String(position + 1).padStart(2, "0")} / {String(total).padStart(2, "0")}
+        </span>
+      </div>
+
+      <div className="card-body">
+        <p className="card-summary">{project.summary}</p>
+        <div className="project-media" data-card-art={project.id}>
+          <span className="card-art-plane card-art-plane-one" aria-hidden="true"></span>
+          <span className="card-art-plane card-art-plane-two" aria-hidden="true"></span>
+          <span className="card-art-axis" aria-hidden="true"></span>
+          <span className="card-art-pixel card-art-pixel-one" aria-hidden="true"></span>
+          <span className="card-art-pixel card-art-pixel-two" aria-hidden="true"></span>
+          <span className="project-media-label">{project.mediaLabel}</span>
+        </div>
+
+        <dl className="card-attributes">
+          {project.attributes.map((attribute) => (
+            <div key={attribute.label}>
+              <dt>{attribute.label}</dt>
+              <dd>{attribute.value}</dd>
+            </div>
+          ))}
+        </dl>
+      </div>
+
+      <div className="technology-tags" aria-label="技术栈">
+        {project.technologies.map((technology) => <span key={technology}>{technology}</span>)}
+      </div>
+
+      <footer className="card-footer">
+        <div className="project-actions" aria-label="项目链接">
+          {project.links.length > 0 ? project.links.map((link) => (
+            <a key={link.href} href={link.href} data-link-kind={link.kind} target="_blank" rel="noreferrer" tabIndex={interactive ? undefined : -1}>
+              <span>{link.label}</span>
+              <ArrowUpRightIcon size={16} weight="bold" />
+            </a>
+          )) : <span className="project-link-pending">公开链接待补充</span>}
+        </div>
+        <motion.button
+          className="detail-control"
+          type="button"
+          aria-expanded={detailsOpen}
+          aria-controls={detailsId}
+          onClick={onToggleDetails}
+          disabled={!interactive}
+          whileHover={interactive ? { scale: 1.04 } : undefined}
+          whileTap={interactive ? { scale: 0.96 } : undefined}
+        >
+          <InfoIcon size={19} weight="bold" />
+          <span>{detailsOpen ? "收起详情" : "查看详情"}</span>
+        </motion.button>
+      </footer>
+
+      <aside id={detailsId} className="card-detail-panel">
+        <p className="pixel-type">PROJECT NOTES</p>
+        <div className="evidence-list">
+          <section><strong>问题</strong><p>{project.problem}</p></section>
+          <section><strong>过程</strong><p>{project.process}</p></section>
+          <section><strong>证据</strong><p>{project.evidence}</p></section>
+        </div>
+      </aside>
+    </article>
+  );
+}
+
+type CardSceneProps = CardFrontProps & {
+  sceneRole?: string;
+  initialBack?: boolean;
+};
+
+function CardScene({ sceneRole, initialBack = false, ...props }: CardSceneProps) {
+  return (
+    <motion.div
+      className="card-scene"
+      data-role={sceneRole}
+      initial={initialBack ? { rotateY: 180 } : false}
+      style={{ transformStyle: "preserve-3d" }}
+    >
+      <CardFront {...props} />
+      <article className="project-card card-face card-back" aria-hidden="true">
+        <DecorativeCardBack />
+      </article>
+    </motion.div>
+  );
+}
+
 export default function ProjectDeck() {
   const reduceMotion = Boolean(useReducedMotion());
   const [filter, setFilter] = useState<Filter>("all");
   const [current, setCurrent] = useState(0);
-  const [direction, setDirection] = useState(1);
-  const [phase, setPhase] = useState<DeckPhase>("dealing");
-  const [faceUp, setFaceUp] = useState(false);
+  const [transition, setTransition] = useState<DeckTransition | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
-  const [dealCount, setDealCount] = useState(0);
-  const [burstKey, setBurstKey] = useState(0);
+  const [dealCycle, setDealCycle] = useState(0);
+  const [ready, setReady] = useState(false);
+  const [scope, animate] = useAnimate();
   const stageRef = useRef<HTMLDivElement>(null);
-  const dealStartedRef = useRef(false);
-  const transitioningRef = useRef(false);
-  const timersRef = useRef<number[]>([]);
-  const stageInView = useInView(stageRef, { once: true, amount: 0.18 });
+  const operationRef = useRef(0);
+  const transitionTokenRef = useRef(0);
+  const wasInViewRef = useRef(false);
+  const stageInView = useInView(stageRef, { once: false, amount: 0.18 });
 
   const pointerX = useMotionValue(0);
   const pointerY = useMotionValue(0);
@@ -95,104 +220,158 @@ export default function ProjectDeck() {
     damping: 24,
   });
 
-  const filteredProjects = useMemo(
-    () => (filter === "all" ? projects : projects.filter((project) => project.category === filter)),
-    [filter],
-  );
+  const filteredProjects = useMemo(() => getProjects(filter), [filter]);
   const selected = filteredProjects[current];
-  const previewCards = useMemo(() => {
-    const previewCount = Math.min(2, Math.max(0, filteredProjects.length - 1));
-    return Array.from({ length: previewCount }, (_, offset) => {
-      const index = (current + offset + 1) % filteredProjects.length;
-      return { project: filteredProjects[index], index, depth: offset + 1 };
-    });
-  }, [current, filteredProjects]);
+  const deckProjects = transition?.targetProjects ?? filteredProjects;
+  const deckIndex = transition?.toIndex ?? current;
+  const sideboardProject = transition?.to ?? selected;
 
-  const schedule = (callback: () => void, delay: number) => {
-    const timer = window.setTimeout(callback, delay);
-    timersRef.current.push(timer);
-  };
+  const previewCards = useMemo(() => {
+    const previewCount = Math.min(2, Math.max(0, deckProjects.length - 1));
+    return Array.from({ length: previewCount }, (_, offset) => {
+      const index = (deckIndex + offset + 1) % deckProjects.length;
+      return { project: deckProjects[index], index, depth: offset + 1 };
+    });
+  }, [deckIndex, deckProjects]);
 
   const resetPointer = () => {
     pointerX.set(0);
     pointerY.set(0);
   };
 
-  useEffect(() => () => {
-    timersRef.current.forEach((timer) => window.clearTimeout(timer));
-  }, []);
+  useEffect(() => {
+    if (stageInView && !wasInViewRef.current) {
+      wasInViewRef.current = true;
+      if (!transition) setDealCycle((cycle) => cycle + 1);
+      return;
+    }
+
+    if (!stageInView && wasInViewRef.current) {
+      wasInViewRef.current = false;
+      if (transition || reduceMotion) return;
+      setReady(false);
+      void animate([
+        ["[data-role='active-shell']", { opacity: 0.35, y: -10 }, { duration: 0.24, ease: retractEase }],
+        ["[data-preview-card]", { opacity: 0.18, y: -6 }, { duration: 0.22, ease: retractEase, at: 0 }],
+      ]);
+    }
+  }, [animate, reduceMotion, stageInView, transition]);
 
   useEffect(() => {
-    if (!stageInView || dealStartedRef.current) return;
-    dealStartedRef.current = true;
+    if (dealCycle === 0) return;
+    const operation = ++operationRef.current;
+    setDetailsOpen(false);
+    setReady(false);
 
-    if (reduceMotion) {
-      setDealCount(3);
-      setFaceUp(true);
-      setPhase("idle");
-      return;
-    }
+    const run = async () => {
+      if (reduceMotion) {
+        setReady(true);
+        return;
+      }
 
-    setDealCount(1);
-    schedule(() => setDealCount(2), 150);
-    schedule(() => setDealCount(3), 330);
-    schedule(() => {
-      setPhase("revealing");
-      setFaceUp(true);
-      setBurstKey((key) => key + 1);
-    }, 650);
-    schedule(() => setPhase("idle"), 1040);
-  }, [stageInView, reduceMotion]);
+      await animate([
+        ["[data-preview-depth='2']", { opacity: [0, 0.5], x: ["36%", "11.6%"], y: [-92, 30], scale: [0.82, 0.93], rotateZ: [14, 6.4] }, { duration: 0.36, ease: drawEase }],
+        ["[data-preview-depth='1']", { opacity: [0, 0.82], x: ["40%", "5.8%"], y: [-98, 15], scale: [0.84, 0.965], rotateZ: [12, 3.2] }, { duration: 0.4, ease: drawEase, at: 0.12 }],
+        ["[data-role='active-shell']", { opacity: [0, 1], x: ["42%", "0%"], y: [-104, 0], scale: [0.84, 1.025, 1], rotateZ: [15, -1.2, 0] }, { duration: 0.58, ease: drawEase, at: 0.24 }],
+        ["[data-role='active-scene']", { rotateY: [180, 0] }, { duration: 0.38, ease: flipEase, at: 0.43 }],
+      ]);
 
-  const startTransition = (nextIndex: number, nextDirection: number, nextFilter?: Filter) => {
-    if (transitioningRef.current || phase !== "idle" || dealCount < 3) return;
+      if (operation === operationRef.current) setReady(true);
+    };
 
-    transitioningRef.current = true;
+    void run();
+    return () => { operationRef.current += 1; };
+  }, [animate, dealCycle, reduceMotion]);
+
+  useEffect(() => {
+    if (!transition) return;
+    const activeTransition = transition;
+    const operation = ++operationRef.current;
+
+    const finish = () => {
+      if (activeTransition.nextFilter) setFilter(activeTransition.nextFilter);
+      setCurrent(activeTransition.toIndex);
+      setTransition(null);
+      setReady(true);
+    };
+
+    const run = async () => {
+      if (reduceMotion) {
+        finish();
+        return;
+      }
+
+      await animate([
+        ["[data-role='outgoing-scene']", { rotateY: [0, 180] }, { duration: 0.26, ease: flipEase }],
+        ["[data-role='outgoing-shell']", {
+          opacity: [1, 0.55],
+          x: ["0%", `${activeTransition.direction * 10}%`],
+          y: [0, 24],
+          scale: [1, 0.94],
+          rotateZ: [0, activeTransition.direction * 5.5],
+        }, { duration: 0.46, ease: retractEase, at: 0.08 }],
+        ["[data-role='incoming-shell']", {
+          opacity: [0.32, 1],
+          x: [activeTransition.direction > 0 ? "24%" : "-18%", "0%"],
+          y: [-74, 0],
+          scale: [0.88, 1.025, 1],
+          rotateZ: [activeTransition.direction * 9, -activeTransition.direction * 1.2, 0],
+        }, { duration: 0.6, ease: drawEase, at: 0.22 }],
+        ["[data-role='incoming-scene']", { rotateY: [180, 0] }, { duration: 0.4, ease: flipEase, at: 0.4 }],
+      ]);
+
+      if (operation === operationRef.current) finish();
+    };
+
+    void run();
+    return () => { operationRef.current += 1; };
+  }, [animate, reduceMotion, transition]);
+
+  const startTransition = (
+    nextIndex: number,
+    direction: 1 | -1,
+    nextFilter?: Filter,
+  ) => {
+    if (!selected || transition || !ready) return;
+    const targetProjects = nextFilter ? getProjects(nextFilter) : filteredProjects;
+    const target = targetProjects[nextIndex];
+    if (!target) return;
+
     resetPointer();
     setDetailsOpen(false);
-    setDirection(nextDirection);
-    setPhase("covering");
-    setFaceUp(false);
-
-    if (reduceMotion) {
-      schedule(() => {
-        if (nextFilter) setFilter(nextFilter);
-        setCurrent(nextIndex);
-        setFaceUp(true);
-        setBurstKey((key) => key + 1);
-        setPhase("idle");
-        transitioningRef.current = false;
-      }, 10);
-      return;
-    }
-
-    schedule(() => setPhase("retracting"), 260);
-    schedule(() => {
-      if (nextFilter) setFilter(nextFilter);
-      setCurrent(nextIndex);
-      setPhase("drawing");
-    }, 500);
-    schedule(() => {
-      setPhase("revealing");
-      setFaceUp(true);
-      setBurstKey((key) => key + 1);
-    }, 810);
-    schedule(() => {
-      setPhase("idle");
-      transitioningRef.current = false;
-    }, 1160);
+    setReady(false);
+    transitionTokenRef.current += 1;
+    setTransition({
+      token: transitionTokenRef.current,
+      direction,
+      from: selected,
+      to: target,
+      toIndex: nextIndex,
+      nextFilter,
+      targetProjects,
+    });
   };
 
   const chooseFilter = (nextFilter: Filter) => {
-    if (nextFilter === filter) return;
+    if (nextFilter === filter || transition || !ready) return;
+    const target = getProjects(nextFilter)[0];
+
+    if (target?.id === selected.id) {
+      resetPointer();
+      setDetailsOpen(false);
+      setFilter(nextFilter);
+      setCurrent(0);
+      return;
+    }
+
     startTransition(0, 1, nextFilter);
   };
 
   const chooseCard = (index: number) => {
-    if (index === current) return;
-    const forwardDistance = (index - current + filteredProjects.length) % filteredProjects.length;
-    const backwardDistance = (current - index + filteredProjects.length) % filteredProjects.length;
-    startTransition(index, forwardDistance <= backwardDistance ? 1 : -1);
+    if (index === current || filteredProjects.length < 2) return;
+    const forward = (index - current + filteredProjects.length) % filteredProjects.length;
+    const backward = (current - index + filteredProjects.length) % filteredProjects.length;
+    startTransition(index, forward <= backward ? 1 : -1);
   };
 
   const navigate = (delta: number) => {
@@ -207,13 +386,13 @@ export default function ProjectDeck() {
   };
 
   const handlePointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
-    if (reduceMotion || phase !== "idle" || !faceUp || detailsOpen || event.pointerType === "touch") return;
+    if (reduceMotion || transition || !ready || detailsOpen || event.pointerType === "touch") return;
     const rect = event.currentTarget.getBoundingClientRect();
     pointerX.set((event.clientX - rect.left) / rect.width - 0.5);
     pointerY.set((event.clientY - rect.top) / rect.height - 0.5);
   };
 
-  if (!selected) {
+  if (!selected || !sideboardProject) {
     return (
       <section id="projects" className="projects-section">
         <div className="shell deck-empty-state">
@@ -224,10 +403,10 @@ export default function ProjectDeck() {
     );
   }
 
-  const busy = phase !== "idle";
-  const controlsDisabled = filteredProjects.length < 2 || busy || dealCount < 3;
-  const activeInitialPose = phase === "drawing" ? deckPose : dealSourcePose;
-  const activePose = phase === "retracting" ? { ...deckPose, rotateZ: 5.5 * direction } : centerPose;
+  const busy = Boolean(transition) || !ready;
+  const controlsDisabled = filteredProjects.length < 2 || busy;
+  const displayPosition = transition?.toIndex ?? current;
+  const displayTotal = deckProjects.length;
 
   return (
     <section id="projects" className="projects-section" aria-label="可交互作品牌组" data-reveal="projects">
@@ -246,32 +425,49 @@ export default function ProjectDeck() {
                 onClick={() => chooseFilter(item.id)}
                 aria-pressed={filter === item.id}
                 disabled={busy}
-              >
-                {item.label}
-              </button>
+              >{item.label}</button>
             ))}
           </div>
 
-          <div className="deck-index" aria-label="作品列表">
-            {filteredProjects.map((project, index) => (
-              <button
-                key={project.id}
-                className={current === index ? "is-active" : undefined}
-                type="button"
-                onClick={() => chooseCard(index)}
-                aria-current={current === index ? "true" : undefined}
-                disabled={busy}
+          <aside className="project-sideboard" aria-live="polite">
+            <AnimatePresence mode="wait" initial={false}>
+              <motion.div
+                key={sideboardProject.id}
+                className="sideboard-content"
+                initial={reduceMotion ? false : { opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={reduceMotion ? undefined : { opacity: 0, y: -6 }}
+                transition={{ duration: reduceMotion ? 0.01 : 0.32, delay: transition ? 0.16 : 0, ease: drawEase }}
               >
-                <span>{project.title}</span>
-                <small className="pixel-type">{project.kind.split(" / ")[0]}</small>
-              </button>
-            ))}
-          </div>
+                <header>
+                  <span className="pixel-type">CURRENT CARD</span>
+                  <span className="pixel-type">{String(displayPosition + 1).padStart(2, "0")} / {String(displayTotal).padStart(2, "0")}</span>
+                </header>
+                <h3>{sideboardProject.title} 的证据面板</h3>
+                <div className="sideboard-story">
+                  <section><strong className="pixel-type">PROBLEM</strong><p>{sideboardProject.problem}</p></section>
+                  <section><strong className="pixel-type">PROCESS</strong><p>{sideboardProject.process}</p></section>
+                  <section><strong className="pixel-type">EVIDENCE</strong><p>{sideboardProject.evidence}</p></section>
+                </div>
+              </motion.div>
+            </AnimatePresence>
 
-          <div className="delivery-note">
-            <strong>不是属性表，是工作现场。</strong>
-            <span>技术栈只作为证据，项目链接只在真实可用时出现。</span>
-          </div>
+            <div className="deck-rail" aria-label="当前牌组">
+              {deckProjects.map((project, index) => (
+                <button
+                  key={project.id}
+                  className={displayPosition === index ? "is-active" : undefined}
+                  type="button"
+                  onClick={() => chooseCard(index)}
+                  disabled={busy || transition?.nextFilter !== undefined}
+                  aria-label={`抽取${project.title}`}
+                >
+                  <span aria-hidden="true"></span>
+                  <small className="pixel-type">{project.title}</small>
+                </button>
+              ))}
+            </div>
+          </aside>
         </div>
 
         <div
@@ -285,14 +481,12 @@ export default function ProjectDeck() {
             if (event.key === "ArrowRight") navigate(1);
             if (event.key === " " || event.key === "Enter") {
               event.preventDefault();
-              if (!busy && faceUp) setDetailsOpen((open) => !open);
+              if (!busy) setDetailsOpen((open) => !open);
             }
           }}
         >
-          <div className="deck-stack" onPointerMove={handlePointerMove} onPointerLeave={resetPointer}>
+          <div ref={scope} className="deck-stack" onPointerMove={handlePointerMove} onPointerLeave={resetPointer}>
             {previewCards.map(({ project, index, depth }) => {
-              const dealThreshold = previewCards.length - depth + 1;
-              if (dealCount < dealThreshold) return null;
               const previewPose = {
                 opacity: depth === 1 ? 0.82 : 0.5,
                 x: `${depth * 5.8}%`,
@@ -300,12 +494,12 @@ export default function ProjectDeck() {
                 scale: 1 - depth * 0.035,
                 rotateZ: depth * 3.2,
               };
-
               return (
                 <motion.div
                   key={`preview-${project.id}`}
                   className="deck-preview-card"
-                  initial={reduceMotion ? false : phase === "dealing" ? dealSourcePose : { ...previewPose, opacity: 0 }}
+                  data-preview-card
+                  data-preview-depth={depth}
                   animate={previewPose}
                   transition={reduceMotion ? { duration: 0.01 } : cardSpring}
                   style={{ zIndex: 3 - depth }}
@@ -320,135 +514,94 @@ export default function ProjectDeck() {
                     }
                   }}
                 >
-                  <article className="project-card deck-preview-face">
-                    <DecorativeCardBack />
-                  </article>
+                  <article className="project-card deck-preview-face"><DecorativeCardBack /></article>
                 </motion.div>
               );
             })}
 
-            {dealCount >= 3 && (
-              <motion.div
-                key={selected.id}
-                className="deck-motion-shell"
-                initial={reduceMotion ? false : activeInitialPose}
-                animate={activePose}
-                transition={reduceMotion ? { duration: 0.01 } : cardSpring}
-                style={{ transformOrigin: "18% 82%" }}
-              >
+            {transition ? (
+              <>
+                <motion.div className="deck-motion-shell transition-card" data-role="outgoing-shell" style={{ zIndex: 4 }}>
+                  <CardScene
+                    project={transition.from}
+                    position={current}
+                    total={filteredProjects.length}
+                    instanceKey={`outgoing-${transition.token}`}
+                    detailsOpen={false}
+                    onToggleDetails={() => undefined}
+                    interactive={false}
+                    sceneRole="outgoing-scene"
+                  />
+                </motion.div>
+                <motion.div
+                  key={`incoming-${transition.token}`}
+                  className="deck-motion-shell transition-card"
+                  data-role="incoming-shell"
+                  initial={{ opacity: 0.32, x: transition.direction > 0 ? "24%" : "-18%", y: -74, scale: 0.88, rotateZ: transition.direction * 9 }}
+                  style={{ zIndex: 5 }}
+                >
+                  <CardScene
+                    project={transition.to}
+                    position={transition.toIndex}
+                    total={transition.targetProjects.length}
+                    instanceKey={`incoming-${transition.token}`}
+                    detailsOpen={false}
+                    onToggleDetails={() => undefined}
+                    interactive={false}
+                    sceneRole="incoming-scene"
+                    initialBack
+                  />
+                </motion.div>
+              </>
+            ) : (
+              <motion.div className="deck-motion-shell" data-role="active-shell" style={{ zIndex: 4 }}>
                 <motion.div
                   className="deck-gesture-card"
                   style={reduceMotion ? undefined : { rotateX, rotateY }}
-                  drag={filteredProjects.length > 1 && phase === "idle" && faceUp && !detailsOpen ? "x" : false}
+                  drag={filteredProjects.length > 1 && ready && !detailsOpen ? "x" : false}
                   dragConstraints={{ left: 0, right: 0 }}
                   dragElastic={0.16}
                   onDragEnd={handleDragEnd}
                 >
-                  <motion.div
-                    className="card-scene"
-                    initial={false}
-                    animate={{ rotateY: faceUp ? 0 : 180 }}
-                    transition={reduceMotion ? { duration: 0.01 } : { type: "spring", stiffness: 430, damping: 32, mass: 0.7 }}
-                  >
-                    <article className={`project-card card-face card-front${detailsOpen ? " is-details-open" : ""}`} aria-hidden={!faceUp}>
-                      <header>
-                        <span className="pixel-type">{selected.kind}</span>
-                        <span className="card-status">{selected.status}</span>
-                      </header>
-
-                      <div className="card-title-row">
-                        <h3>{selected.title}</h3>
-                        <span className="card-number pixel-type">
-                          {String(current + 1).padStart(2, "0")} / {String(filteredProjects.length).padStart(2, "0")}
-                        </span>
-                      </div>
-
-                      <div className="card-body">
-                        <p className="card-summary">{selected.summary}</p>
-                        <div className="project-media" data-card-art={selected.id}>
-                          <span className="card-art-plane card-art-plane-one" aria-hidden="true"></span>
-                          <span className="card-art-plane card-art-plane-two" aria-hidden="true"></span>
-                          <span className="card-art-axis" aria-hidden="true"></span>
-                          <span className="card-art-pixel card-art-pixel-one" aria-hidden="true"></span>
-                          <span className="card-art-pixel card-art-pixel-two" aria-hidden="true"></span>
-                          <span className="project-media-label">{selected.mediaLabel}</span>
-                        </div>
-
-                        <dl className="card-attributes">
-                          {selected.attributes.map((attribute) => (
-                            <div key={attribute.label}>
-                              <dt>{attribute.label}</dt>
-                              <dd>{attribute.value}</dd>
-                            </div>
-                          ))}
-                        </dl>
-                      </div>
-
-                      <div className="technology-tags" aria-label="技术栈">
-                        {selected.technologies.map((technology) => <span key={technology}>{technology}</span>)}
-                      </div>
-
-                      <footer className="card-footer">
-                        <div className="project-actions" aria-label="项目链接">
-                          {selected.links.length > 0 ? selected.links.map((link) => (
-                            <a key={link.href} href={link.href} data-link-kind={link.kind} target="_blank" rel="noreferrer">
-                              <span>{link.label}</span>
-                              <ArrowUpRightIcon size={16} weight="bold" />
-                            </a>
-                          )) : <span className="project-link-pending">公开链接待补充</span>}
-                        </div>
-                        <motion.button
-                          className="detail-control"
-                          type="button"
-                          aria-expanded={detailsOpen}
-                          aria-controls={`details-${selected.id}`}
-                          onClick={() => setDetailsOpen((open) => !open)}
-                          whileHover={reduceMotion ? undefined : { scale: 1.04 }}
-                          whileTap={reduceMotion ? undefined : { scale: 0.96 }}
-                        >
-                          <InfoIcon size={19} weight="bold" />
-                          <span>{detailsOpen ? "收起详情" : "查看详情"}</span>
-                        </motion.button>
-                      </footer>
-
-                      <aside id={`details-${selected.id}`} className="card-detail-panel">
-                        <p className="pixel-type">PROJECT NOTES</p>
-                        <div className="evidence-list">
-                          <section>
-                            <strong>问题</strong>
-                            <p>{selected.problem}</p>
-                          </section>
-                          <section>
-                            <strong>过程</strong>
-                            <p>{selected.process}</p>
-                          </section>
-                          <section>
-                            <strong>证据</strong>
-                            <p>{selected.evidence}</p>
-                          </section>
-                        </div>
-                      </aside>
-                    </article>
-
-                    <article className="project-card card-face card-back" aria-hidden={faceUp}>
-                      <DecorativeCardBack />
-                    </article>
-                  </motion.div>
+                  <CardScene
+                    project={selected}
+                    position={current}
+                    total={filteredProjects.length}
+                    instanceKey="active"
+                    detailsOpen={detailsOpen}
+                    onToggleDetails={() => setDetailsOpen((open) => !open)}
+                    sceneRole="active-scene"
+                  />
                 </motion.div>
               </motion.div>
             )}
 
-            {!reduceMotion && burstKey > 0 && (
-              <div key={burstKey} className="pixel-burst" aria-hidden="true">
+            {(transition || dealCycle > 0) && !reduceMotion && (
+              <div key={transition?.token ?? `deal-${dealCycle}`} className="pixel-burst" aria-hidden="true">
                 {burstPixels.map(([x, y], index) => (
                   <span
                     key={`${x}-${y}`}
-                    style={{ "--burst-x": `${x}px`, "--burst-y": `${y}px`, "--burst-delay": `${index * 9}ms` } as React.CSSProperties}
+                    style={{
+                      "--burst-x": `${x}px`,
+                      "--burst-y": `${y}px`,
+                      "--burst-delay": `${(transition ? 390 : 540) + index * 9}ms`,
+                    } as React.CSSProperties}
                   ></span>
                 ))}
               </div>
             )}
           </div>
+
+          <button
+            className="mobile-evidence-summary"
+            type="button"
+            aria-expanded={detailsOpen}
+            onClick={() => setDetailsOpen((open) => !open)}
+            disabled={busy}
+          >
+            <span><small className="pixel-type">PROBLEM / PROCESS / EVIDENCE</small>{sideboardProject.summary}</span>
+            <strong>{detailsOpen ? "收起" : "展开详情"} +</strong>
+          </button>
 
           <div className="deck-controls">
             <motion.button
@@ -460,11 +613,9 @@ export default function ProjectDeck() {
               title="上一张作品"
               whileHover={reduceMotion ? undefined : { scale: 1.07 }}
               whileTap={reduceMotion ? undefined : { scale: 0.93 }}
-            >
-              <ArrowLeftIcon size={24} weight="bold" />
-            </motion.button>
+            ><ArrowLeftIcon size={24} weight="bold" /></motion.button>
             <div className="deck-readout">
-              <strong>{selected.title}</strong>
+              <strong>{sideboardProject.title}</strong>
               <span className="pixel-type">{busy ? "DRAWING" : "READY"}</span>
             </div>
             <motion.button
@@ -476,11 +627,9 @@ export default function ProjectDeck() {
               title="下一张作品"
               whileHover={reduceMotion ? undefined : { scale: 1.07 }}
               whileTap={reduceMotion ? undefined : { scale: 0.93 }}
-            >
-              <ArrowRightIcon size={24} weight="bold" />
-            </motion.button>
+            ><ArrowRightIcon size={24} weight="bold" /></motion.button>
           </div>
-          <p className="sr-only" aria-live="polite">当前作品：{selected.title}，{busy ? "正在抽取" : "正面已展示"}</p>
+          <p className="sr-only" aria-live="polite">当前作品：{sideboardProject.title}，{busy ? "正在抽取" : "正面已展示"}</p>
         </div>
       </div>
     </section>
