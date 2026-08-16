@@ -348,3 +348,43 @@
 阻塞与证据：
 
 - SceneScope 仓库、Demo、简历和联系方式尚未提供，相关动作继续保留明确占位。
+
+## 2026-08-16 / v0.3 WebGPU Ambient World
+
+今天完成：
+
+- 删除 Hero WebGL 与全页 Canvas 2D 两套旧背景，合并为单一固定 `AmbientWorld` 场景。
+- 使用 Three.js `WebGPURenderer` 作为主路径；无 WebGPU 时进入 WebGL2 backend，初始化失败或主动降级时保留静态 CSS 几何。
+- 通过 `data-backend="webgpu|webgl2|static"`、`data-quality` 和 `data-status` 暴露可验收运行状态。
+- 在同一场景中加入低面几何、像素粒子、指针吸引与排斥、点击脉冲、抽牌冲量和抽象数据鳐。
+- 数据鳐使用游走、指针场、几何避障、内容安全区排斥与边界力，不引用受版权保护的角色形象。
+- 背景监听 `homepage:section-presence`，在 Hero、关于、技术带、项目、文章、生活和联系区之间平滑切换能量参数。
+- 增加只覆盖画布的轻量扫描、暗角和色调统一层，不对 DOM 文本、图片或按钮做后处理。
+- 限制桌面与移动 DPR、粒子数量和后端质量；页面隐藏时暂停，恢复时重置帧间隔。
+- 将项目章节 reveal 属性移到 Astro 外层，消除 `client:visible` React 岛的 hydration mismatch。
+- 保留 `?ambient=webgl2` 与 `?ambient=static` 作为本地强制验收入口。
+
+当前现象：
+
+- 默认路径实测为 `webgpu / full / ready`；强制降级实测为 `webgl2 / balanced / ready` 和 `static / static / ready`。
+- 1440 x 900 桌面与 390 x 844 移动视口无水平溢出，桌面和移动 Hero 均在首屏保留下一章节提示。
+- 移动项目摘要可展开，卡片 `scrollWidth === clientWidth` 且 `scrollHeight === clientHeight`。
+- WebGPU 局部截图在无指针输入的 1.2 秒内哈希变化，证明空闲几何、粒子和数据鳐持续更新。
+- WebGPU、WebGL2、静态路径及深浅主题复验后，控制台 warning/error 均为空。
+- `bun run check`：0 errors、0 warnings、0 hints。
+- `bun run build`：静态生产构建成功，无构建告警。
+- WebGPU 场景 chunk 为 687.81 kB minified / 191.12 kB gzip，这是当前 Three.js WebGPU renderer 的主要首屏成本。
+
+下一步最小动作：
+
+- 合入 `develop`，建立 `test/v0.3-browser-qa` 完成最终回归并更新 `docs/QA_REPORT.md`。
+
+阻塞与证据：
+
+- 无功能阻塞。真实照片、项目截图和对外链接仍需用户提供。
+
+新增 Backlog：
+
+- 获得真实媒体后复核背景安全区和照片对比度。
+- 若实机低端设备数据证明 191.12 kB gzip 仍影响首屏，再评估延迟启动或 Rust + wgpu/Wasm 替换，不在无数据时提前扩展架构。
+- 高级 TSL selective bloom 继续保持关闭；只有当前轻量后处理不足且性能预算允许时才单独加入。

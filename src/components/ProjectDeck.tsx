@@ -9,7 +9,6 @@ import {
   motion,
   type PanInfo,
   useAnimate,
-  useInView,
   useMotionValue,
   useReducedMotion,
   useSpring,
@@ -202,12 +201,12 @@ export default function ProjectDeck() {
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [dealCycle, setDealCycle] = useState(0);
   const [ready, setReady] = useState(false);
+  const [stageInView, setStageInView] = useState(false);
   const [scope, animate] = useAnimate();
   const stageRef = useRef<HTMLDivElement>(null);
   const operationRef = useRef(0);
   const transitionTokenRef = useRef(0);
   const wasInViewRef = useRef(false);
-  const stageInView = useInView(stageRef, { once: false, amount: 0.18 });
 
   const pointerX = useMotionValue(0);
   const pointerY = useMotionValue(0);
@@ -238,6 +237,27 @@ export default function ProjectDeck() {
     pointerX.set(0);
     pointerY.set(0);
   };
+
+  useEffect(() => {
+    const section = document.querySelector<HTMLElement>("[data-project-stage]");
+    const syncPresence = () => {
+      setStageInView(section?.dataset.revealState === "visible");
+    };
+    const handlePresence = (event: Event) => {
+      const detail = (event as CustomEvent<{ id?: string; visible?: boolean }>).detail;
+      if (detail?.id === "projects") setStageInView(Boolean(detail.visible));
+    };
+
+    window.addEventListener("homepage:section-presence", handlePresence);
+    const presenceObserver = section ? new MutationObserver(syncPresence) : null;
+    presenceObserver?.observe(section!, { attributes: true, attributeFilter: ["data-reveal-state"] });
+    const frame = window.requestAnimationFrame(syncPresence);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      presenceObserver?.disconnect();
+      window.removeEventListener("homepage:section-presence", handlePresence);
+    };
+  }, []);
 
   useEffect(() => {
     if (stageInView && !wasInViewRef.current) {
@@ -340,6 +360,9 @@ export default function ProjectDeck() {
     resetPointer();
     setDetailsOpen(false);
     setReady(false);
+    window.dispatchEvent(new CustomEvent("homepage:project-pulse", {
+      detail: { direction, project: target.id },
+    }));
     transitionTokenRef.current += 1;
     setTransition({
       token: transitionTokenRef.current,
@@ -409,7 +432,7 @@ export default function ProjectDeck() {
   const displayTotal = deckProjects.length;
 
   return (
-    <section id="projects" className="projects-section" aria-label="可交互作品牌组" data-reveal="projects">
+    <section id="projects" className="projects-section" aria-label="可交互作品牌组">
       <div className="shell projects-grid">
         <div className="projects-copy">
           <p className="pixel-type">WORK DECK</p>
@@ -475,6 +498,9 @@ export default function ProjectDeck() {
           className="deck-stage"
           tabIndex={0}
           aria-busy={busy}
+          data-deal-cycle={dealCycle}
+          data-in-view={stageInView}
+          data-ready={ready}
           onKeyDown={(event) => {
             if (event.target !== event.currentTarget) return;
             if (event.key === "ArrowLeft") navigate(-1);
@@ -570,6 +596,7 @@ export default function ProjectDeck() {
                     instanceKey="active"
                     detailsOpen={detailsOpen}
                     onToggleDetails={() => setDetailsOpen((open) => !open)}
+                    interactive={ready}
                     sceneRole="active-scene"
                   />
                 </motion.div>
