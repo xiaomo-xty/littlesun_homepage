@@ -20,7 +20,14 @@
 
 ## 开发命令
 
-项目骨架完成后，本节将提供 `bun install`、`bun run dev`、`bun run check` 与 `bun run build` 命令。
+```bash
+bun install
+bun run dev
+bun run check
+bun run build
+```
+
+默认开发地址由 Astro 输出。为避免与博客的 `4321` 端口冲突，本项目本地验收使用其他端口。
 
 ## 文档
 
@@ -28,4 +35,3 @@
 - [分支流程](docs/BRANCHING.md)
 - [内容边界](docs/CONTENT_BOUNDARIES.md)
 - [开发日志](docs/DEVELOPMENT_LOG.md)
-
