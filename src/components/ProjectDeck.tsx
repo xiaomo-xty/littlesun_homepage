@@ -12,7 +12,7 @@ import {
   useSpring,
   useTransform,
 } from "motion/react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { projects, type Project } from "../data/projects";
 
 type Filter = "all" | Project["category"];
@@ -40,6 +40,23 @@ const burstPixels = [
   [98, 32],
 ] as const;
 
+const dealTransition = {
+  type: "spring",
+  stiffness: 560,
+  damping: 38,
+  mass: 0.68,
+} as const;
+
+const dealVariants = {
+  enter: (direction: number) => direction > 0
+    ? { opacity: 0.76, x: 54, y: 20, scale: 0.94, rotateZ: 5.5, rotateY: -12, zIndex: 4 }
+    : { opacity: 0, x: -176, y: 22, scale: 0.9, rotateZ: -16, rotateY: 18, zIndex: 6 },
+  center: { opacity: 1, x: 0, y: 0, scale: 1, rotateZ: 0, rotateY: 0, zIndex: 4 },
+  exit: (direction: number) => direction > 0
+    ? { opacity: 0, x: -188, y: 24, scale: 0.9, rotateZ: -17, rotateY: 20, zIndex: 6 }
+    : { opacity: 0.66, x: 54, y: 20, scale: 0.94, rotateZ: 5.5, rotateY: -12, zIndex: 3 },
+};
+
 export default function ProjectDeck() {
   const reduceMotion = useReducedMotion();
   const [filter, setFilter] = useState<Filter>("all");
@@ -47,6 +64,9 @@ export default function ProjectDeck() {
   const [direction, setDirection] = useState(1);
   const [flipped, setFlipped] = useState(false);
   const [burstKey, setBurstKey] = useState(0);
+  const frontFlipRef = useRef<HTMLButtonElement>(null);
+  const backFlipRef = useRef<HTMLButtonElement>(null);
+  const shouldMoveFaceFocus = useRef(false);
 
   const pointerX = useMotionValue(0);
   const pointerY = useMotionValue(0);
@@ -64,8 +84,22 @@ export default function ProjectDeck() {
     [filter],
   );
   const selected = filteredProjects[current];
+  const previewCards = useMemo(() => {
+    const previewCount = Math.min(2, Math.max(0, filteredProjects.length - 1));
+    return Array.from({ length: previewCount }, (_, offset) => {
+      const index = (current + offset + 1) % filteredProjects.length;
+      return { project: filteredProjects[index], index, depth: offset + 1 };
+    });
+  }, [current, filteredProjects]);
+
+  useEffect(() => {
+    if (!shouldMoveFaceFocus.current) return;
+    shouldMoveFaceFocus.current = false;
+    (flipped ? backFlipRef : frontFlipRef).current?.focus({ preventScroll: true });
+  }, [flipped]);
 
   const chooseFilter = (nextFilter: Filter) => {
+    resetPointer();
     setFilter(nextFilter);
     setCurrent(0);
     setDirection(1);
@@ -74,7 +108,10 @@ export default function ProjectDeck() {
 
   const chooseCard = (index: number) => {
     if (index === current) return;
-    setDirection(index > current ? 1 : -1);
+    const forwardDistance = (index - current + filteredProjects.length) % filteredProjects.length;
+    const backwardDistance = (current - index + filteredProjects.length) % filteredProjects.length;
+    resetPointer();
+    setDirection(forwardDistance <= backwardDistance ? 1 : -1);
     setCurrent(index);
     setFlipped(false);
     setBurstKey((key) => key + 1);
@@ -82,6 +119,7 @@ export default function ProjectDeck() {
 
   const navigate = (delta: number) => {
     if (filteredProjects.length < 2) return;
+    resetPointer();
     setDirection(delta > 0 ? 1 : -1);
     setCurrent((index) => (index + delta + filteredProjects.length) % filteredProjects.length);
     setFlipped(false);
@@ -94,7 +132,7 @@ export default function ProjectDeck() {
   };
 
   const handlePointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
-    if (reduceMotion || event.pointerType === "touch") return;
+    if (reduceMotion || flipped || event.pointerType === "touch") return;
     const rect = event.currentTarget.getBoundingClientRect();
     pointerX.set((event.clientX - rect.left) / rect.width - 0.5);
     pointerY.set((event.clientY - rect.top) / rect.height - 0.5);
@@ -103,6 +141,12 @@ export default function ProjectDeck() {
   const resetPointer = () => {
     pointerX.set(0);
     pointerY.set(0);
+  };
+
+  const showFace = (nextFlipped: boolean) => {
+    resetPointer();
+    shouldMoveFaceFocus.current = true;
+    setFlipped(nextFlipped);
   };
 
   if (!selected) {
@@ -172,7 +216,7 @@ export default function ProjectDeck() {
             if (event.key === "ArrowRight") navigate(1);
             if (event.key === " " || event.key === "Enter") {
               event.preventDefault();
-              setFlipped((value) => !value);
+              showFace(!flipped);
             }
           }}
         >
@@ -181,18 +225,51 @@ export default function ProjectDeck() {
             onPointerMove={handlePointerMove}
             onPointerLeave={resetPointer}
           >
-            <span className="deck-shadow-card deck-shadow-third" aria-hidden="true"></span>
-            <span className="deck-shadow-card deck-shadow-second" aria-hidden="true"></span>
+            <AnimatePresence initial={false}>
+              {previewCards.map(({ project, index, depth }) => (
+                <motion.div
+                  key={`preview-${project.id}`}
+                  className="deck-preview-card"
+                  style={{ "--deck-depth": depth } as React.CSSProperties}
+                  initial={reduceMotion ? false : { opacity: 0 }}
+                  animate={{ opacity: depth === 1 ? 0.82 : 0.52 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: reduceMotion ? 0.01 : 0.18 }}
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`切换到${project.title}`}
+                  onClick={() => chooseCard(index)}
+                  onKeyDown={(event) => {
+                    if (event.key === " " || event.key === "Enter") {
+                      event.preventDefault();
+                      chooseCard(index);
+                    }
+                  }}
+                >
+                  <article className="project-card deck-preview-face" aria-hidden="true">
+                    <header>
+                      <span className="pixel-type">{project.kind}</span>
+                      <strong>{project.status}</strong>
+                    </header>
+                    <h3>{project.title}</h3>
+                    <p>{project.summary}</p>
+                    <span className="deck-preview-mark pixel-type">NEXT</span>
+                  </article>
+                </motion.div>
+              ))}
+            </AnimatePresence>
 
-            <AnimatePresence custom={direction} mode="wait" initial={false}>
+            <AnimatePresence custom={direction} initial={false}>
               <motion.div
                 key={selected.id}
                 className="deck-motion-shell"
                 custom={direction}
-                initial={reduceMotion ? false : { opacity: 0, x: direction * 90, rotateZ: direction * 3 }}
-                animate={{ opacity: 1, x: 0, rotateZ: 0 }}
-                exit={reduceMotion ? { opacity: 0 } : { opacity: 0, x: direction * -110, rotateZ: direction * -4 }}
-                transition={reduceMotion ? { duration: 0.01 } : { type: "spring", stiffness: 280, damping: 24 }}
+                variants={dealVariants}
+                initial={reduceMotion ? false : "enter"}
+                animate="center"
+                exit={reduceMotion ? { opacity: 0 } : "exit"}
+                transition={reduceMotion ? { duration: 0.01 } : dealTransition}
+                style={{ transformOrigin: "18% 82%" }}
               >
                 <motion.div
                   className="deck-gesture-card"
@@ -205,7 +282,7 @@ export default function ProjectDeck() {
                   <motion.div
                     className="card-scene"
                     animate={{ rotateY: flipped ? 180 : 0 }}
-                    transition={reduceMotion ? { duration: 0.01 } : { type: "spring", stiffness: 240, damping: 24 }}
+                    transition={reduceMotion ? { duration: 0.01 } : { type: "spring", stiffness: 420, damping: 31, mass: 0.72 }}
                   >
                     <article className="project-card card-face card-front" aria-hidden={flipped}>
                       <header>
@@ -213,19 +290,23 @@ export default function ProjectDeck() {
                         <strong>{selected.status}</strong>
                       </header>
                       <h3>{selected.title}</h3>
-                      <p className="card-summary">{selected.summary}</p>
-                      <div className="project-media">
-                        <span className="pixel-corner corner-nw" aria-hidden="true"></span>
-                        <span className="pixel-corner corner-ne" aria-hidden="true"></span>
-                        <span className="pixel-corner corner-sw" aria-hidden="true"></span>
-                        <span className="pixel-corner corner-se" aria-hidden="true"></span>
-                        <span>{selected.mediaLabel}</span>
+                      <div className="card-content card-front-content">
+                        <p className="card-summary">{selected.summary}</p>
+                        <div className="project-media">
+                          <span className="pixel-corner corner-nw" aria-hidden="true"></span>
+                          <span className="pixel-corner corner-ne" aria-hidden="true"></span>
+                          <span className="pixel-corner corner-sw" aria-hidden="true"></span>
+                          <span className="pixel-corner corner-se" aria-hidden="true"></span>
+                          <span>{selected.mediaLabel}</span>
+                        </div>
                       </div>
                       <p className="technology-line">{selected.technologies.join(" / ")}</p>
                       <motion.button
+                        ref={frontFlipRef}
                         className="flip-control"
                         type="button"
-                        onClick={() => setFlipped(true)}
+                        onClick={() => showFace(true)}
+                        tabIndex={flipped ? -1 : 0}
                         whileHover={reduceMotion ? undefined : { scale: 1.04 }}
                         whileTap={reduceMotion ? undefined : { scale: 0.96 }}
                       >
@@ -240,25 +321,29 @@ export default function ProjectDeck() {
                         <strong>{selected.status}</strong>
                       </header>
                       <h3>{selected.title}</h3>
-                      <div className="evidence-list">
-                        <section>
-                          <strong>问题</strong>
-                          <p>{selected.problem}</p>
-                        </section>
-                        <section>
-                          <strong>过程</strong>
-                          <p>{selected.process}</p>
-                        </section>
-                        <section>
-                          <strong>证据</strong>
-                          <p>{selected.evidence}</p>
-                        </section>
+                      <div className="card-content card-back-content">
+                        <div className="evidence-list">
+                          <section>
+                            <strong>问题</strong>
+                            <p>{selected.problem}</p>
+                          </section>
+                          <section>
+                            <strong>过程</strong>
+                            <p>{selected.process}</p>
+                          </section>
+                          <section>
+                            <strong>证据</strong>
+                            <p>{selected.evidence}</p>
+                          </section>
+                        </div>
                       </div>
                       <p className="technology-line">{selected.technologies.join(" / ")}</p>
                       <motion.button
+                        ref={backFlipRef}
                         className="flip-control"
                         type="button"
-                        onClick={() => setFlipped(false)}
+                        onClick={() => showFace(false)}
+                        tabIndex={flipped ? 0 : -1}
                         whileHover={reduceMotion ? undefined : { scale: 1.04 }}
                         whileTap={reduceMotion ? undefined : { scale: 0.96 }}
                       >
