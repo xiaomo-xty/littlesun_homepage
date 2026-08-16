@@ -230,7 +230,7 @@ export default function ProjectDeck() {
   const activePose = phase === "retracting" ? { ...deckPose, rotateZ: 5.5 * direction } : centerPose;
 
   return (
-    <section id="projects" className="projects-section" aria-label="可交互作品牌组">
+    <section id="projects" className="projects-section" aria-label="可交互作品牌组" data-reveal="projects">
       <div className="shell projects-grid">
         <div className="projects-copy">
           <p className="pixel-type">WORK DECK</p>
