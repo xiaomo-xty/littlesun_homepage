@@ -1,4 +1,5 @@
 <script>
+  const initializeSectionTransitions = () => {
   const observed = new Map<Element, number>();
   const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
 
@@ -60,4 +61,10 @@
       }
     }, { once: true });
   }
+
+  };
+
+  const startSectionTransitions = () => window.requestAnimationFrame(initializeSectionTransitions);
+  if (document.readyState === "complete") startSectionTransitions();
+  else window.addEventListener("load", startSectionTransitions, { once: true });
 </script>
