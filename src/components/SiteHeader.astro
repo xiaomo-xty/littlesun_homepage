@@ -1,0 +1,22 @@
+---
+import HeaderActions from "./HeaderActions";
+import { site } from "../data/site";
+---
+
+<header class="site-header">
+  <nav class="shell header-inner" aria-label="主导航">
+    <a class="identity" href="#top">{site.title}</a>
+    <div class="desktop-nav">
+      <a href="#about">关于</a>
+      <a href="#projects">项目</a>
+      <a href="#articles">文章</a>
+      <a href="#life">生活</a>
+    </div>
+    <div class="theme-readout pixel-type" aria-hidden="true">
+      <span>LIGHT</span>
+      <span>DARK</span>
+    </div>
+    <HeaderActions client:load />
+  </nav>
+</header>
+

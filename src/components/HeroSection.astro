@@ -1,0 +1,69 @@
+---
+import { ArrowUpRightIcon } from "@phosphor-icons/react";
+import { primaryLinks, site } from "../data/site";
+import TypewriterLine from "./TypewriterLine";
+import WorldBackground from "./WorldBackground";
+---
+
+<section id="top" class="hero-section">
+  <div class="world-layer" aria-hidden="true">
+    <WorldBackground client:load />
+    <span class="world-plane world-plane-far"></span>
+    <span class="world-plane world-plane-mid"></span>
+    <span class="world-axis"></span>
+    <span class="world-label pixel-type">FAR</span>
+    <span class="pixel pixel-one"></span>
+    <span class="pixel pixel-two"></span>
+    <span class="pixel pixel-three"></span>
+  </div>
+
+  <div class="shell hero-grid">
+    <div class="hero-copy">
+      <p class="direction-line"><TypewriterLine client:load /></p>
+      <h1>{site.title}</h1>
+      <p class="hero-intro">{site.introduction}</p>
+
+      <div class="focus-line">
+        <span class="pixel-type">CURRENT FOCUS</span>
+        <div>
+          <strong>C++ 锚点</strong>
+          <strong>Rust 成长</strong>
+          <strong>图形工具</strong>
+        </div>
+      </div>
+
+      <div class="hero-actions">
+        <a class="command command-primary" href="#projects">
+          <span>看项目</span>
+          <ArrowUpRightIcon size={18} weight="bold" />
+        </a>
+        <a class="command command-secondary" href="#contact">联系我</a>
+      </div>
+
+      <div class="quick-links">
+        {primaryLinks.slice(0, 3).map((link) =>
+          link.href ? (
+            <a href={link.href} target={link.external ? "_blank" : undefined} rel={link.external ? "noreferrer" : undefined}>
+              {link.label}
+            </a>
+          ) : (
+            <span aria-disabled="true">[{link.label}]</span>
+          ),
+        )}
+      </div>
+    </div>
+
+    <figure class="portrait-stack">
+      <span class="portrait-layer portrait-layer-back" aria-hidden="true"></span>
+      <span class="portrait-layer portrait-layer-mid" aria-hidden="true"></span>
+      <div class="portrait-placeholder">
+        <span class="pixel-corner corner-nw" aria-hidden="true"></span>
+        <span class="pixel-corner corner-ne" aria-hidden="true"></span>
+        <span class="pixel-corner corner-sw" aria-hidden="true"></span>
+        <span class="pixel-corner corner-se" aria-hidden="true"></span>
+        <span>真实人像 / 工作现场 / 个人作品图</span>
+      </div>
+      <figcaption>替换为真实素材，保持人物或作品完整可辨</figcaption>
+    </figure>
+  </div>
+</section>

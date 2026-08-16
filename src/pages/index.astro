@@ -1,0 +1,95 @@
+---
+import ArticleList from "../components/ArticleList.astro";
+import HeroSection from "../components/HeroSection.astro";
+import ProjectStage from "../components/ProjectStage.astro";
+import SiteHeader from "../components/SiteHeader.astro";
+import { primaryLinks, site } from "../data/site";
+import BaseLayout from "../layouts/BaseLayout.astro";
+import "../styles/home.css";
+---
+
+<BaseLayout>
+  <SiteHeader />
+  <main id="main-content">
+    <HeroSection />
+
+    <section id="about" class="shell about-section">
+      <div class="section-heading">
+        <h2>我在做什么</h2>
+        <p>职业主轴是高性能图形、游戏引擎工具与跨平台系统。技术不是标签，而是我处理问题的方式。</p>
+      </div>
+
+      <div class="about-grid">
+        <article>
+          <h3>经历</h3>
+          <p>维护 C++ 商业代码，接触 PDF 页面对象、图片编解码、数据路径与故障处理。</p>
+        </article>
+        <article>
+          <h3>关注</h3>
+          <p>资源如何进入渲染管线，平台差异如何被隔离，性能问题如何留下证据。</p>
+        </article>
+        <article>
+          <h3>做事方式</h3>
+          <p>从现象到最小复现，再用测试、分析和文档把修复变成可复用经验。</p>
+        </article>
+      </div>
+
+      <div class="skill-axis" aria-label="技术成长方向">
+        <span class="axis-line" aria-hidden="true"></span>
+        <div><i></i><strong>C++</strong></div>
+        <div><i></i><strong>Rust</strong></div>
+        <div><i></i><strong>图形 / wgpu</strong></div>
+        <div><i></i><strong>跨平台</strong></div>
+      </div>
+    </section>
+
+    <div class="technology-ribbon" aria-label="技术方向">
+      <div class="shell pixel-type">
+        C++&nbsp;&nbsp; RUST&nbsp;&nbsp; WGPU&nbsp;&nbsp; WEBGPU&nbsp;&nbsp; WASM&nbsp;&nbsp; GRAPHICS&nbsp;&nbsp; TOOLING&nbsp;&nbsp; CROSS-PLATFORM
+      </div>
+    </div>
+
+    <ProjectStage />
+    <ArticleList />
+
+    <section id="life" class="shell life-section">
+      <h2>屏幕之外</h2>
+      <p>我喜欢 Minecraft 的开放玩法、塞尔达的探索感、三体的科幻尺度，也被动画与绘画中的光、材质和叙事节奏吸引。</p>
+      <div class="interest-line" aria-label="生活兴趣">
+        <span>像素世界</span><span>探索</span><span>科幻</span><span>动画</span><span>游戏</span>
+      </div>
+
+      <div class="life-gallery" aria-label="生活照片占位">
+        <figure><div>真实照片占位 / 日常观察</div></figure>
+        <figure><div>真实照片占位 / 绘画与影像</div></figure>
+        <figure><div>真实照片占位 / 游戏与旅行</div></figure>
+      </div>
+      <p class="replacement-note">替换为三张真实照片，保留自然构图和统一色调</p>
+    </section>
+
+    <section id="contact" class="contact-section">
+      <div class="shell contact-inner">
+        <h2>来聊聊图形、工具和下一段工作。</h2>
+        <p>简历、GitHub 和邮箱将在提供真实地址后上线。</p>
+        <a class="command contact-command" href={site.blog} target="_blank" rel="noreferrer">博客</a>
+
+        <div class="contact-links">
+          {primaryLinks.filter((link) => link.label !== "博客").map((link) =>
+            link.href ? (
+              <a href={link.href} target={link.external ? "_blank" : undefined} rel={link.external ? "noreferrer" : undefined}>
+                {link.label}
+              </a>
+            ) : (
+              <span>[{link.label}]</span>
+            ),
+          )}
+        </div>
+
+        <footer>
+          <strong>{site.title}</strong>
+          <span>{site.domain}</span>
+        </footer>
+      </div>
+    </section>
+  </main>
+</BaseLayout>
