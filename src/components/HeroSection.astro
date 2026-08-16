@@ -1,10 +1,13 @@
 ---
 import { ArrowUpRightIcon } from "@phosphor-icons/react";
 import { primaryLinks, site } from "../data/site";
+import TypewriterLine from "./TypewriterLine";
+import WorldBackground from "./WorldBackground";
 ---
 
 <section id="top" class="hero-section">
   <div class="world-layer" aria-hidden="true">
+    <WorldBackground client:load />
     <span class="world-plane world-plane-far"></span>
     <span class="world-plane world-plane-mid"></span>
     <span class="world-axis"></span>
@@ -16,7 +19,7 @@ import { primaryLinks, site } from "../data/site";
 
   <div class="shell hero-grid">
     <div class="hero-copy">
-      <p class="direction-line">{site.direction.join(" / ")}</p>
+      <p class="direction-line"><TypewriterLine client:load /></p>
       <h1>{site.title}</h1>
       <p class="hero-intro">{site.introduction}</p>
 

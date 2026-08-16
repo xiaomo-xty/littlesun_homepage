@@ -71,10 +71,10 @@ import "../styles/home.css";
       <div class="shell contact-inner">
         <h2>来聊聊图形、工具和下一段工作。</h2>
         <p>简历、GitHub 和邮箱将在提供真实地址后上线。</p>
-        <a class="command contact-command" href={site.blog} target="_blank" rel="noreferrer">先看博客</a>
+        <a class="command contact-command" href={site.blog} target="_blank" rel="noreferrer">博客</a>
 
         <div class="contact-links">
-          {primaryLinks.map((link) =>
+          {primaryLinks.filter((link) => link.label !== "博客").map((link) =>
             link.href ? (
               <a href={link.href} target={link.external ? "_blank" : undefined} rel={link.external ? "noreferrer" : undefined}>
                 {link.label}

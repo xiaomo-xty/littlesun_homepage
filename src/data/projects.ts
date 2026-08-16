@@ -1,5 +1,6 @@
 export type Project = {
   id: string;
+  category: "project" | "experience" | "open-source" | "direction";
   kind: string;
   title: string;
   status: string;
@@ -15,6 +16,7 @@ export type Project = {
 export const projects: Project[] = [
   {
     id: "scenescope",
+    category: "project",
     kind: "PROJECT / CURRENT",
     title: "SceneScope",
     status: "进行中",
@@ -28,6 +30,7 @@ export const projects: Project[] = [
   },
   {
     id: "commercial-cpp",
+    category: "experience",
     kind: "EXPERIENCE / C++",
     title: "商业 C++ 开发",
     status: "可公开范围",
@@ -41,6 +44,7 @@ export const projects: Project[] = [
   },
   {
     id: "bevy",
+    category: "open-source",
     kind: "OPEN SOURCE / LEARNING",
     title: "Bevy 协作路线",
     status: "准备中",
@@ -54,6 +58,7 @@ export const projects: Project[] = [
   },
   {
     id: "ue5",
+    category: "direction",
     kind: "COMPATIBILITY / DIRECTION",
     title: "UE5 工具方向",
     status: "按岗位补充",
