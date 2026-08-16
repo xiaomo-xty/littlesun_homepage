@@ -1,12 +1,13 @@
 import {
-  ArrowCounterClockwiseIcon,
   ArrowLeftIcon,
   ArrowRightIcon,
+  ArrowUpRightIcon,
+  InfoIcon,
 } from "@phosphor-icons/react";
 import {
-  AnimatePresence,
   motion,
   type PanInfo,
+  useInView,
   useMotionValue,
   useReducedMotion,
   useSpring,
@@ -16,6 +17,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { projects, type Project } from "../data/projects";
 
 type Filter = "all" | Project["category"];
+type DeckPhase = "dealing" | "idle" | "covering" | "retracting" | "drawing" | "revealing";
 
 const filters: Array<{ id: Filter; label: string }> = [
   { id: "all", label: "全部" },
@@ -26,47 +28,61 @@ const filters: Array<{ id: Filter; label: string }> = [
 ];
 
 const burstPixels = [
-  [-88, -54],
-  [-56, -92],
-  [-18, -70],
-  [24, -96],
-  [64, -62],
-  [94, -24],
-  [-96, 18],
-  [-70, 62],
-  [-24, 88],
-  [22, 72],
-  [68, 84],
-  [98, 32],
+  [-92, -58],
+  [-62, -94],
+  [-24, -74],
+  [20, -102],
+  [62, -68],
+  [96, -28],
+  [-100, 16],
+  [-72, 64],
+  [-24, 92],
+  [20, 76],
+  [70, 88],
+  [102, 34],
 ] as const;
 
-const dealTransition = {
+const cardSpring = {
   type: "spring",
-  stiffness: 560,
-  damping: 38,
-  mass: 0.68,
+  stiffness: 470,
+  damping: 36,
+  mass: 0.72,
 } as const;
 
-const dealVariants = {
-  enter: (direction: number) => direction > 0
-    ? { opacity: 0.76, x: 54, y: 20, scale: 0.94, rotateZ: 5.5, rotateY: -12, zIndex: 4 }
-    : { opacity: 0, x: -176, y: 22, scale: 0.9, rotateZ: -16, rotateY: 18, zIndex: 6 },
-  center: { opacity: 1, x: 0, y: 0, scale: 1, rotateZ: 0, rotateY: 0, zIndex: 4 },
-  exit: (direction: number) => direction > 0
-    ? { opacity: 0, x: -188, y: 24, scale: 0.9, rotateZ: -17, rotateY: 20, zIndex: 6 }
-    : { opacity: 0.66, x: 54, y: 20, scale: 0.94, rotateZ: 5.5, rotateY: -12, zIndex: 3 },
-};
+const centerPose = { opacity: 1, x: "0%", y: 0, scale: 1, rotateZ: 0, zIndex: 4 };
+const deckPose = { opacity: 0.7, x: "10%", y: 24, scale: 0.94, rotateZ: 5.5, zIndex: 1 };
+const dealSourcePose = { opacity: 0, x: "42%", y: -104, scale: 0.84, rotateZ: 15, zIndex: 4 };
+
+function DecorativeCardBack() {
+  return (
+    <div className="card-back-design" aria-hidden="true">
+      <span className="back-frame"></span>
+      <span className="back-orbit back-orbit-one"></span>
+      <span className="back-orbit back-orbit-two"></span>
+      <span className="back-core"></span>
+      <span className="back-pixel back-pixel-one"></span>
+      <span className="back-pixel back-pixel-two"></span>
+      <span className="back-pixel back-pixel-three"></span>
+      <span className="back-pixel back-pixel-four"></span>
+    </div>
+  );
+}
 
 export default function ProjectDeck() {
-  const reduceMotion = useReducedMotion();
+  const reduceMotion = Boolean(useReducedMotion());
   const [filter, setFilter] = useState<Filter>("all");
   const [current, setCurrent] = useState(0);
   const [direction, setDirection] = useState(1);
-  const [flipped, setFlipped] = useState(false);
+  const [phase, setPhase] = useState<DeckPhase>("dealing");
+  const [faceUp, setFaceUp] = useState(false);
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [dealCount, setDealCount] = useState(0);
   const [burstKey, setBurstKey] = useState(0);
-  const frontFlipRef = useRef<HTMLButtonElement>(null);
-  const backFlipRef = useRef<HTMLButtonElement>(null);
-  const shouldMoveFaceFocus = useRef(false);
+  const stageRef = useRef<HTMLDivElement>(null);
+  const dealStartedRef = useRef(false);
+  const transitioningRef = useRef(false);
+  const timersRef = useRef<number[]>([]);
+  const stageInView = useInView(stageRef, { once: true, amount: 0.18 });
 
   const pointerX = useMotionValue(0);
   const pointerY = useMotionValue(0);
@@ -92,38 +108,97 @@ export default function ProjectDeck() {
     });
   }, [current, filteredProjects]);
 
+  const schedule = (callback: () => void, delay: number) => {
+    const timer = window.setTimeout(callback, delay);
+    timersRef.current.push(timer);
+  };
+
+  const resetPointer = () => {
+    pointerX.set(0);
+    pointerY.set(0);
+  };
+
+  useEffect(() => () => {
+    timersRef.current.forEach((timer) => window.clearTimeout(timer));
+  }, []);
+
   useEffect(() => {
-    if (!shouldMoveFaceFocus.current) return;
-    shouldMoveFaceFocus.current = false;
-    (flipped ? backFlipRef : frontFlipRef).current?.focus({ preventScroll: true });
-  }, [flipped]);
+    if (!stageInView || dealStartedRef.current) return;
+    dealStartedRef.current = true;
+
+    if (reduceMotion) {
+      setDealCount(3);
+      setFaceUp(true);
+      setPhase("idle");
+      return;
+    }
+
+    setDealCount(1);
+    schedule(() => setDealCount(2), 150);
+    schedule(() => setDealCount(3), 330);
+    schedule(() => {
+      setPhase("revealing");
+      setFaceUp(true);
+      setBurstKey((key) => key + 1);
+    }, 650);
+    schedule(() => setPhase("idle"), 1040);
+  }, [stageInView, reduceMotion]);
+
+  const startTransition = (nextIndex: number, nextDirection: number, nextFilter?: Filter) => {
+    if (transitioningRef.current || phase !== "idle" || dealCount < 3) return;
+
+    transitioningRef.current = true;
+    resetPointer();
+    setDetailsOpen(false);
+    setDirection(nextDirection);
+    setPhase("covering");
+    setFaceUp(false);
+
+    if (reduceMotion) {
+      schedule(() => {
+        if (nextFilter) setFilter(nextFilter);
+        setCurrent(nextIndex);
+        setFaceUp(true);
+        setBurstKey((key) => key + 1);
+        setPhase("idle");
+        transitioningRef.current = false;
+      }, 10);
+      return;
+    }
+
+    schedule(() => setPhase("retracting"), 260);
+    schedule(() => {
+      if (nextFilter) setFilter(nextFilter);
+      setCurrent(nextIndex);
+      setPhase("drawing");
+    }, 500);
+    schedule(() => {
+      setPhase("revealing");
+      setFaceUp(true);
+      setBurstKey((key) => key + 1);
+    }, 810);
+    schedule(() => {
+      setPhase("idle");
+      transitioningRef.current = false;
+    }, 1160);
+  };
 
   const chooseFilter = (nextFilter: Filter) => {
-    resetPointer();
-    setFilter(nextFilter);
-    setCurrent(0);
-    setDirection(1);
-    setFlipped(false);
+    if (nextFilter === filter) return;
+    startTransition(0, 1, nextFilter);
   };
 
   const chooseCard = (index: number) => {
     if (index === current) return;
     const forwardDistance = (index - current + filteredProjects.length) % filteredProjects.length;
     const backwardDistance = (current - index + filteredProjects.length) % filteredProjects.length;
-    resetPointer();
-    setDirection(forwardDistance <= backwardDistance ? 1 : -1);
-    setCurrent(index);
-    setFlipped(false);
-    setBurstKey((key) => key + 1);
+    startTransition(index, forwardDistance <= backwardDistance ? 1 : -1);
   };
 
   const navigate = (delta: number) => {
     if (filteredProjects.length < 2) return;
-    resetPointer();
-    setDirection(delta > 0 ? 1 : -1);
-    setCurrent((index) => (index + delta + filteredProjects.length) % filteredProjects.length);
-    setFlipped(false);
-    setBurstKey((key) => key + 1);
+    const nextIndex = (current + delta + filteredProjects.length) % filteredProjects.length;
+    startTransition(nextIndex, delta > 0 ? 1 : -1);
   };
 
   const handleDragEnd = (_event: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) => {
@@ -132,21 +207,10 @@ export default function ProjectDeck() {
   };
 
   const handlePointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
-    if (reduceMotion || flipped || event.pointerType === "touch") return;
+    if (reduceMotion || phase !== "idle" || !faceUp || detailsOpen || event.pointerType === "touch") return;
     const rect = event.currentTarget.getBoundingClientRect();
     pointerX.set((event.clientX - rect.left) / rect.width - 0.5);
     pointerY.set((event.clientY - rect.top) / rect.height - 0.5);
-  };
-
-  const resetPointer = () => {
-    pointerX.set(0);
-    pointerY.set(0);
-  };
-
-  const showFace = (nextFlipped: boolean) => {
-    resetPointer();
-    shouldMoveFaceFocus.current = true;
-    setFlipped(nextFlipped);
   };
 
   if (!selected) {
@@ -154,23 +218,24 @@ export default function ProjectDeck() {
       <section id="projects" className="projects-section">
         <div className="shell deck-empty-state">
           <h2>暂时没有这一类作品</h2>
-          <button type="button" onClick={() => chooseFilter("all")}>查看全部</button>
+          <button type="button" onClick={() => setFilter("all")}>查看全部</button>
         </div>
       </section>
     );
   }
 
+  const busy = phase !== "idle";
+  const controlsDisabled = filteredProjects.length < 2 || busy || dealCount < 3;
+  const activeInitialPose = phase === "drawing" ? deckPose : dealSourcePose;
+  const activePose = phase === "retracting" ? { ...deckPose, rotateZ: 5.5 * direction } : centerPose;
+
   return (
-    <section
-      id="projects"
-      className="projects-section"
-      aria-label="可交互作品牌组"
-    >
+    <section id="projects" className="projects-section" aria-label="可交互作品牌组">
       <div className="shell projects-grid">
         <div className="projects-copy">
           <p className="pixel-type">WORK DECK</p>
           <h2>作品会增长，牌组不封顶。</h2>
-          <p>项目、经历与协作记录使用同一套证据结构：问题、过程与证据。</p>
+          <p>每张牌记录一个真实问题、一段处理过程，以及可以继续补充的证据。</p>
 
           <div className="deck-filters" aria-label="筛选作品类型">
             {filters.map((item) => (
@@ -180,6 +245,7 @@ export default function ProjectDeck() {
                 type="button"
                 onClick={() => chooseFilter(item.id)}
                 aria-pressed={filter === item.id}
+                disabled={busy}
               >
                 {item.label}
               </button>
@@ -194,6 +260,7 @@ export default function ProjectDeck() {
                 type="button"
                 onClick={() => chooseCard(index)}
                 aria-current={current === index ? "true" : undefined}
+                disabled={busy}
               >
                 <span>{project.title}</span>
                 <small className="pixel-type">{project.kind.split(" / ")[0]}</small>
@@ -202,42 +269,49 @@ export default function ProjectDeck() {
           </div>
 
           <div className="delivery-note">
-            <strong>先交付，再扩展。</strong>
-            <span>卡牌只承载已经发生、可以解释的工作。</span>
+            <strong>不是属性表，是工作现场。</strong>
+            <span>技术栈只作为证据，项目链接只在真实可用时出现。</span>
           </div>
         </div>
 
         <div
+          ref={stageRef}
           className="deck-stage"
           tabIndex={0}
+          aria-busy={busy}
           onKeyDown={(event) => {
             if (event.target !== event.currentTarget) return;
             if (event.key === "ArrowLeft") navigate(-1);
             if (event.key === "ArrowRight") navigate(1);
             if (event.key === " " || event.key === "Enter") {
               event.preventDefault();
-              showFace(!flipped);
+              if (!busy && faceUp) setDetailsOpen((open) => !open);
             }
           }}
         >
-          <div
-            className="deck-stack"
-            onPointerMove={handlePointerMove}
-            onPointerLeave={resetPointer}
-          >
-            <AnimatePresence initial={false}>
-              {previewCards.map(({ project, index, depth }) => (
+          <div className="deck-stack" onPointerMove={handlePointerMove} onPointerLeave={resetPointer}>
+            {previewCards.map(({ project, index, depth }) => {
+              const dealThreshold = previewCards.length - depth + 1;
+              if (dealCount < dealThreshold) return null;
+              const previewPose = {
+                opacity: depth === 1 ? 0.82 : 0.5,
+                x: `${depth * 5.8}%`,
+                y: depth * 15,
+                scale: 1 - depth * 0.035,
+                rotateZ: depth * 3.2,
+              };
+
+              return (
                 <motion.div
                   key={`preview-${project.id}`}
                   className="deck-preview-card"
-                  style={{ "--deck-depth": depth } as React.CSSProperties}
-                  initial={reduceMotion ? false : { opacity: 0 }}
-                  animate={{ opacity: depth === 1 ? 0.82 : 0.52 }}
-                  exit={{ opacity: 0 }}
-                  transition={{ duration: reduceMotion ? 0.01 : 0.18 }}
+                  initial={reduceMotion ? false : phase === "dealing" ? dealSourcePose : { ...previewPose, opacity: 0 }}
+                  animate={previewPose}
+                  transition={reduceMotion ? { duration: 0.01 } : cardSpring}
+                  style={{ zIndex: 3 - depth }}
                   role="button"
-                  tabIndex={0}
-                  aria-label={`切换到${project.title}`}
+                  tabIndex={busy ? -1 : 0}
+                  aria-label={`抽取${project.title}`}
                   onClick={() => chooseCard(index)}
                   onKeyDown={(event) => {
                     if (event.key === " " || event.key === "Enter") {
@@ -246,82 +320,99 @@ export default function ProjectDeck() {
                     }
                   }}
                 >
-                  <article className="project-card deck-preview-face" aria-hidden="true">
-                    <header>
-                      <span className="pixel-type">{project.kind}</span>
-                      <strong>{project.status}</strong>
-                    </header>
-                    <h3>{project.title}</h3>
-                    <p>{project.summary}</p>
-                    <span className="deck-preview-mark pixel-type">NEXT</span>
+                  <article className="project-card deck-preview-face">
+                    <DecorativeCardBack />
                   </article>
                 </motion.div>
-              ))}
-            </AnimatePresence>
+              );
+            })}
 
-            <AnimatePresence custom={direction} initial={false}>
+            {dealCount >= 3 && (
               <motion.div
                 key={selected.id}
                 className="deck-motion-shell"
-                custom={direction}
-                variants={dealVariants}
-                initial={reduceMotion ? false : "enter"}
-                animate="center"
-                exit={reduceMotion ? { opacity: 0 } : "exit"}
-                transition={reduceMotion ? { duration: 0.01 } : dealTransition}
+                initial={reduceMotion ? false : activeInitialPose}
+                animate={activePose}
+                transition={reduceMotion ? { duration: 0.01 } : cardSpring}
                 style={{ transformOrigin: "18% 82%" }}
               >
                 <motion.div
                   className="deck-gesture-card"
                   style={reduceMotion ? undefined : { rotateX, rotateY }}
-                  drag={filteredProjects.length > 1 && !flipped ? "x" : false}
+                  drag={filteredProjects.length > 1 && phase === "idle" && faceUp && !detailsOpen ? "x" : false}
                   dragConstraints={{ left: 0, right: 0 }}
                   dragElastic={0.16}
                   onDragEnd={handleDragEnd}
                 >
                   <motion.div
                     className="card-scene"
-                    animate={{ rotateY: flipped ? 180 : 0 }}
-                    transition={reduceMotion ? { duration: 0.01 } : { type: "spring", stiffness: 420, damping: 31, mass: 0.72 }}
+                    initial={false}
+                    animate={{ rotateY: faceUp ? 0 : 180 }}
+                    transition={reduceMotion ? { duration: 0.01 } : { type: "spring", stiffness: 430, damping: 32, mass: 0.7 }}
                   >
-                    <article className="project-card card-face card-front" aria-hidden={flipped}>
+                    <article className={`project-card card-face card-front${detailsOpen ? " is-details-open" : ""}`} aria-hidden={!faceUp}>
                       <header>
                         <span className="pixel-type">{selected.kind}</span>
-                        <strong>{selected.status}</strong>
+                        <span className="card-status">{selected.status}</span>
                       </header>
-                      <h3>{selected.title}</h3>
-                      <div className="card-content card-front-content">
-                        <p className="card-summary">{selected.summary}</p>
-                        <div className="project-media">
-                          <span className="pixel-corner corner-nw" aria-hidden="true"></span>
-                          <span className="pixel-corner corner-ne" aria-hidden="true"></span>
-                          <span className="pixel-corner corner-sw" aria-hidden="true"></span>
-                          <span className="pixel-corner corner-se" aria-hidden="true"></span>
-                          <span>{selected.mediaLabel}</span>
-                        </div>
-                      </div>
-                      <p className="technology-line">{selected.technologies.join(" / ")}</p>
-                      <motion.button
-                        ref={frontFlipRef}
-                        className="flip-control"
-                        type="button"
-                        onClick={() => showFace(true)}
-                        tabIndex={flipped ? -1 : 0}
-                        whileHover={reduceMotion ? undefined : { scale: 1.04 }}
-                        whileTap={reduceMotion ? undefined : { scale: 0.96 }}
-                      >
-                        <ArrowCounterClockwiseIcon size={22} weight="bold" />
-                        <span>查看背面</span>
-                      </motion.button>
-                    </article>
 
-                    <article className="project-card card-face card-back" aria-hidden={!flipped}>
-                      <header>
-                        <span className="pixel-type">EVIDENCE / BACK</span>
-                        <strong>{selected.status}</strong>
-                      </header>
-                      <h3>{selected.title}</h3>
-                      <div className="card-content card-back-content">
+                      <div className="card-title-row">
+                        <h3>{selected.title}</h3>
+                        <span className="card-number pixel-type">
+                          {String(current + 1).padStart(2, "0")} / {String(filteredProjects.length).padStart(2, "0")}
+                        </span>
+                      </div>
+
+                      <div className="card-body">
+                        <p className="card-summary">{selected.summary}</p>
+                        <div className="project-media" data-card-art={selected.id}>
+                          <span className="card-art-plane card-art-plane-one" aria-hidden="true"></span>
+                          <span className="card-art-plane card-art-plane-two" aria-hidden="true"></span>
+                          <span className="card-art-axis" aria-hidden="true"></span>
+                          <span className="card-art-pixel card-art-pixel-one" aria-hidden="true"></span>
+                          <span className="card-art-pixel card-art-pixel-two" aria-hidden="true"></span>
+                          <span className="project-media-label">{selected.mediaLabel}</span>
+                        </div>
+
+                        <dl className="card-attributes">
+                          {selected.attributes.map((attribute) => (
+                            <div key={attribute.label}>
+                              <dt>{attribute.label}</dt>
+                              <dd>{attribute.value}</dd>
+                            </div>
+                          ))}
+                        </dl>
+                      </div>
+
+                      <div className="technology-tags" aria-label="技术栈">
+                        {selected.technologies.map((technology) => <span key={technology}>{technology}</span>)}
+                      </div>
+
+                      <footer className="card-footer">
+                        <div className="project-actions" aria-label="项目链接">
+                          {selected.links.length > 0 ? selected.links.map((link) => (
+                            <a key={link.href} href={link.href} data-link-kind={link.kind} target="_blank" rel="noreferrer">
+                              <span>{link.label}</span>
+                              <ArrowUpRightIcon size={16} weight="bold" />
+                            </a>
+                          )) : <span className="project-link-pending">公开链接待补充</span>}
+                        </div>
+                        <motion.button
+                          className="detail-control"
+                          type="button"
+                          aria-expanded={detailsOpen}
+                          aria-controls={`details-${selected.id}`}
+                          onClick={() => setDetailsOpen((open) => !open)}
+                          whileHover={reduceMotion ? undefined : { scale: 1.04 }}
+                          whileTap={reduceMotion ? undefined : { scale: 0.96 }}
+                        >
+                          <InfoIcon size={19} weight="bold" />
+                          <span>{detailsOpen ? "收起详情" : "查看详情"}</span>
+                        </motion.button>
+                      </footer>
+
+                      <aside id={`details-${selected.id}`} className="card-detail-panel">
+                        <p className="pixel-type">PROJECT NOTES</p>
                         <div className="evidence-list">
                           <section>
                             <strong>问题</strong>
@@ -336,25 +427,16 @@ export default function ProjectDeck() {
                             <p>{selected.evidence}</p>
                           </section>
                         </div>
-                      </div>
-                      <p className="technology-line">{selected.technologies.join(" / ")}</p>
-                      <motion.button
-                        ref={backFlipRef}
-                        className="flip-control"
-                        type="button"
-                        onClick={() => showFace(false)}
-                        tabIndex={flipped ? 0 : -1}
-                        whileHover={reduceMotion ? undefined : { scale: 1.04 }}
-                        whileTap={reduceMotion ? undefined : { scale: 0.96 }}
-                      >
-                        <ArrowCounterClockwiseIcon size={22} weight="bold" />
-                        <span>返回正面</span>
-                      </motion.button>
+                      </aside>
+                    </article>
+
+                    <article className="project-card card-face card-back" aria-hidden={faceUp}>
+                      <DecorativeCardBack />
                     </article>
                   </motion.div>
                 </motion.div>
               </motion.div>
-            </AnimatePresence>
+            )}
 
             {!reduceMotion && burstKey > 0 && (
               <div key={burstKey} className="pixel-burst" aria-hidden="true">
@@ -373,7 +455,7 @@ export default function ProjectDeck() {
               className="icon-command"
               type="button"
               onClick={() => navigate(-1)}
-              disabled={filteredProjects.length < 2}
+              disabled={controlsDisabled}
               aria-label="上一张作品"
               title="上一张作品"
               whileHover={reduceMotion ? undefined : { scale: 1.07 }}
@@ -381,12 +463,15 @@ export default function ProjectDeck() {
             >
               <ArrowLeftIcon size={24} weight="bold" />
             </motion.button>
-            <strong>{selected.title}</strong>
+            <div className="deck-readout">
+              <strong>{selected.title}</strong>
+              <span className="pixel-type">{busy ? "DRAWING" : "READY"}</span>
+            </div>
             <motion.button
               className="icon-command is-primary"
               type="button"
               onClick={() => navigate(1)}
-              disabled={filteredProjects.length < 2}
+              disabled={controlsDisabled}
               aria-label="下一张作品"
               title="下一张作品"
               whileHover={reduceMotion ? undefined : { scale: 1.07 }}
@@ -395,7 +480,7 @@ export default function ProjectDeck() {
               <ArrowRightIcon size={24} weight="bold" />
             </motion.button>
           </div>
-          <p className="sr-only" aria-live="polite">当前作品：{selected.title}，{flipped ? "背面" : "正面"}</p>
+          <p className="sr-only" aria-live="polite">当前作品：{selected.title}，{busy ? "正在抽取" : "正面已展示"}</p>
         </div>
       </div>
     </section>
