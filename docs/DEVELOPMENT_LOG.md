@@ -1,5 +1,29 @@
 # 开发日志
 
+## 2026-08-16 / v0.3 Motion Foundation
+
+今天完成：
+
+- 新增全站章节进入与离开协议，使用 IntersectionObserver 反复触发，不监听滚动帧。
+- 为 Hero、关于、技术带、项目、文章、生活与联系建立统一的可见状态。
+- 加入 `420ms` 离开防抖，避免阈值附近滚动造成闪烁。
+- 章节状态通过 `homepage:section-presence` 事件开放给后续 WebGPU 世界。
+- reduced motion 或不支持 IntersectionObserver 时直接展示内容，不保留位移和透明度动画。
+
+当前现象：
+
+- `bun run check`：0 errors、0 warnings、0 hints。
+- `bun run build`：成功。
+- 本阶段没有修改项目数据、卡牌状态机或背景渲染器。
+
+下一步最小动作：
+
+- 创建项目侧板与卡牌编排分支，将问题、过程、证据同步到桌面侧板和移动摘要。
+
+阻塞与证据：
+
+- 无阻塞。
+
 ## 2026-08-16 / v0.3 Penpot V7
 
 今天完成：
