@@ -1,5 +1,59 @@
 # 开发日志
 
+## 2026-08-16 / v0.3 Motion Foundation
+
+今天完成：
+
+- 新增全站章节进入与离开协议，使用 IntersectionObserver 反复触发，不监听滚动帧。
+- 为 Hero、关于、技术带、项目、文章、生活与联系建立统一的可见状态。
+- 加入 `420ms` 离开防抖，避免阈值附近滚动造成闪烁。
+- 章节状态通过 `homepage:section-presence` 事件开放给后续 WebGPU 世界。
+- reduced motion 或不支持 IntersectionObserver 时直接展示内容，不保留位移和透明度动画。
+
+当前现象：
+
+- `bun run check`：0 errors、0 warnings、0 hints。
+- `bun run build`：成功。
+- 本阶段没有修改项目数据、卡牌状态机或背景渲染器。
+
+下一步最小动作：
+
+- 创建项目侧板与卡牌编排分支，将问题、过程、证据同步到桌面侧板和移动摘要。
+
+阻塞与证据：
+
+- 无阻塞。
+
+## 2026-08-16 / v0.3 Penpot V7
+
+今天完成：
+
+- 保留 Penpot V6 原稿，新建 V7 桌面主页、移动主页、交互基础、卡牌分镜和 WebGPU 动态世界说明五张画板。
+- 将桌面项目空白区改为与当前卡同步的问题、过程、证据侧板，并增加紧凑牌组轨道。
+- 为项目卡补充 GitHub、Demo 和更多证据的链接状态；移动端使用卡后证据摘要，避免把完整侧板压进窄屏。
+- 以 `0 / 180 / 580 / 820ms` 四个状态记录旧牌回背、来牌翻转、粒子冲量和末端回弹。
+- 记录 WebGPU → WebGL2 → 静态 CSS 降级路径、数据鳐行为、背景后处理限额和可重复章节动画。
+- 导出五张 PNG 并检查文字裁切、元素重叠、对比度和移动端溢出；第二轮清理旧列表透出与翻面文案重叠。
+
+当前现象：
+
+- V7 设计已完成，等待确认；本阶段没有修改生产代码。
+- 桌面与移动稿延续博客偏蓝配色，珊瑚红仅用于冲量、证据和注意力标记。
+- Penpot HTTP MCP 可用，插件面板需保持打开；长画板导出耗时约 30–80 秒。
+
+下一步最小动作：
+
+- 用户确认 V7 后，从 `develop` 创建 `feature/motion-foundation`，先实现统一 motion 协议和 reduced-motion 基线。
+
+阻塞与证据：
+
+- 无技术阻塞；生产实现受设计确认门禁约束。
+
+新增 Backlog：
+
+- 用真实 SceneScope 仓库和演示 URL 替换设计中的链接占位。
+- 生产实现时用 WebGPU capability 标记验证实际 backend，不只检测 API 是否存在。
+
 ## 2026-08-16 / Repository
 
 今天完成：
@@ -213,3 +267,152 @@
 
 - 获得真实链接后只修改 `src/data/projects.ts`，不改卡牌组件结构。
 - 接入真实项目截图后复核详情浮层与图片焦点区域的关系。
+
+## 2026-08-16 / v0.3 Interaction Design Planning
+
+今天完成：
+
+- 审计 v0.2.0 的卡牌定时器状态机、一次性发牌触发、双背景实现和项目区信息分配。
+- 确认卡顿来自固定等待、组件重挂载、弹簧收敛和层级切换叠加，不把问题简化为单一缓动曲线。
+- 将下一版统一为“活体技术世界”方向，并定义信息层、交互层和环境层的动态预算。
+- 规划可重复章节入退场、固定槽位卡牌时序、项目牌组侧板、程序化数据鳐和背景专用后处理。
+- 根据新增约束将背景确定为 WebGPU 优先、WebGL2 降级、静态 CSS 兜底，并确认当前 Three.js 版本具备对应 renderer、fallback backend 和节点后处理能力。
+- 将唯一推荐方案、实施分支和验收标准写入 `docs/V0.3_INTERACTION_DESIGN.md`。
+
+当前现象：
+
+- 本阶段只修改文档，没有改动页面实现、依赖或博客项目。
+- 完整方案明显超过一次小修范围，拆分为 Motion、项目侧板、WebGPU 动态世界、后处理和浏览器验收五个阶段。
+
+下一步最小动作：
+
+- 等待方案确认；确认后从更新后的 `develop` 创建 `feature/motion-foundation`，只实施第一阶段。
+
+阻塞与证据：
+
+- 无技术阻塞；实现开始前需要用户确认 v0.3 方案。
+
+新增 Backlog：
+
+- 后续获得真实项目链接与图像时，在独立内容分支替换占位内容。
+- v0.3 验收时分别记录 WebGPU 主路径和 WebGL2 fallback 的运行证据。
+
+## 2026-08-16 / v0.3 Motion Foundation
+
+今天完成：
+
+- 建立可重复触发的章节进入与离开协议，Hero、关于、技术带、项目、文章、生活和联系区均已接入。
+- 使用 IntersectionObserver 与 420ms 离开迟滞，避免章节边界附近反复闪烁。
+- 章节重新进入时保留主题、项目筛选和当前卡等交互状态。
+- 向背景层派发 `homepage:section-presence` 事件，为统一动态世界提供章节状态桥接。
+- `prefers-reduced-motion` 下取消位移与裁切，直接显示稳定内容。
+
+当前现象：
+
+- 章节从上方或下方重新进入均可再次播放，滚动过程不被劫持。
+- `bun run check`：0 errors、0 warnings、0 hints。
+- `bun run build`：静态生产构建成功。
+
+下一步最小动作：
+
+- 在独立分支完成项目牌组侧板与重叠切牌时序。
+
+阻塞与证据：
+
+- 无阻塞。
+
+## 2026-08-16 / v0.3 Project Sideboard
+
+今天完成：
+
+- 将固定定时器切牌重构为 Motion animation sequence，以重叠时间线完成旧牌翻背、回堆、新牌抽取和翻正。
+- 单次切牌总时长收敛到约 820ms，出牌和来牌作为同时存在的独立实体参与过渡。
+- 项目区重新进入视口时重新发出当前可见牌组，但保留筛选和当前项目。
+- 桌面左侧加入与当前卡同步的 Problem / Process / Evidence 证据侧板和可扩展牌轨。
+- 移动端加入卡后证据摘要；真实 URL 仍是项目动作出现的唯一条件。
+- 为每个过渡卡实例生成唯一详情标识，并让隐藏卡面退出键盘交互。
+- 同项目筛选直接更新牌组范围，不播放“同一张牌翻到自己”的无意义动画。
+
+当前现象：
+
+- 1440 x 1000 桌面项目区的侧板、当前牌和后两张牌均保持完整层次。
+- 390 x 844 移动视口无水平溢出，卡牌与证据摘要均处于页面安全宽度内。
+- 浏览器复验中，切牌过渡没有重复 DOM `id`，隐藏卡面内可聚焦元素为 0。
+- `bun run check`：0 errors、0 warnings、0 hints。
+- `bun run build`：静态生产构建成功。
+
+下一步最小动作：
+
+- 合入 `develop`，从更新后的集成分支创建 `feature/webgpu-ambient-world`。
+
+阻塞与证据：
+
+- SceneScope 仓库、Demo、简历和联系方式尚未提供，相关动作继续保留明确占位。
+
+## 2026-08-16 / v0.3 WebGPU Ambient World
+
+今天完成：
+
+- 删除 Hero WebGL 与全页 Canvas 2D 两套旧背景，合并为单一固定 `AmbientWorld` 场景。
+- 使用 Three.js `WebGPURenderer` 作为主路径；无 WebGPU 时进入 WebGL2 backend，初始化失败或主动降级时保留静态 CSS 几何。
+- 通过 `data-backend="webgpu|webgl2|static"`、`data-quality` 和 `data-status` 暴露可验收运行状态。
+- 在同一场景中加入低面几何、像素粒子、指针吸引与排斥、点击脉冲、抽牌冲量和抽象数据鳐。
+- 数据鳐使用游走、指针场、几何避障、内容安全区排斥与边界力，不引用受版权保护的角色形象。
+- 背景监听 `homepage:section-presence`，在 Hero、关于、技术带、项目、文章、生活和联系区之间平滑切换能量参数。
+- 增加只覆盖画布的轻量扫描、暗角和色调统一层，不对 DOM 文本、图片或按钮做后处理。
+- 限制桌面与移动 DPR、粒子数量和后端质量；页面隐藏时暂停，恢复时重置帧间隔。
+- 将项目章节 reveal 属性移到 Astro 外层，消除 `client:visible` React 岛的 hydration mismatch。
+- 保留 `?ambient=webgl2` 与 `?ambient=static` 作为本地强制验收入口。
+
+当前现象：
+
+- 默认路径实测为 `webgpu / full / ready`；强制降级实测为 `webgl2 / balanced / ready` 和 `static / static / ready`。
+- 1440 x 900 桌面与 390 x 844 移动视口无水平溢出，桌面和移动 Hero 均在首屏保留下一章节提示。
+- 移动项目摘要可展开，卡片 `scrollWidth === clientWidth` 且 `scrollHeight === clientHeight`。
+- WebGPU 局部截图在无指针输入的 1.2 秒内哈希变化，证明空闲几何、粒子和数据鳐持续更新。
+- WebGPU、WebGL2、静态路径及深浅主题复验后，控制台 warning/error 均为空。
+- `bun run check`：0 errors、0 warnings、0 hints。
+- `bun run build`：静态生产构建成功，无构建告警。
+- WebGPU 场景 chunk 为 687.81 kB minified / 191.12 kB gzip，这是当前 Three.js WebGPU renderer 的主要首屏成本。
+
+下一步最小动作：
+
+- 合入 `develop`，建立 `test/v0.3-browser-qa` 完成最终回归并更新 `docs/QA_REPORT.md`。
+
+阻塞与证据：
+
+- 无功能阻塞。真实照片、项目截图和对外链接仍需用户提供。
+
+新增 Backlog：
+
+- 获得真实媒体后复核背景安全区和照片对比度。
+- 若实机低端设备数据证明 191.12 kB gzip 仍影响首屏，再评估延迟启动或 Rust + wgpu/Wasm 替换，不在无数据时提前扩展架构。
+- 高级 TSL selective bloom 继续保持关闭；只有当前轻量后处理不足且性能预算允许时才单独加入。
+
+## 2026-08-16 / v0.3 Browser QA
+
+今天完成：
+
+- 在独立 `test/v0.3-browser-qa` 分支完成桌面与移动端、浅色与深色的浏览器回归。
+- 复验移动菜单的打开、Escape 关闭和锚点导航关闭行为。
+- 复验项目牌组的键盘切牌、详情展开、唯一 DOM 标识和移动端内容边界。
+- 让项目区离开视口后重新进入，确认发牌周期再次触发，同时保留当前卡与主题。
+- 分别验证 WebGPU、强制 WebGL2 和静态降级路径，三条干净加载会话均无 warning/error。
+- 检查可见文案、页面水平溢出以及移动卡面内部溢出。
+
+当前现象：
+
+- 桌面 1440 x 900 与移动 390 x 844 均无水平溢出，浅色和深色主题正常。
+- 默认桌面为 `webgpu / full / ready`，默认移动为 `webgpu / balanced / ready`。
+- 强制后端分别为 `webgl2 / balanced / ready` 与 `static / static / ready`。
+- 项目重入后发牌周期从 `1` 递增到 `2`，商业 C++ 当前卡和深色主题保持不变。
+- `bun run check`：0 errors、0 warnings、0 hints。
+- `bun run build`：静态生产构建成功，无构建告警。
+
+下一步最小动作：
+
+- 将测试分支以 `--no-ff` 合并回 `develop`，保留 `main` 作为后续正式发布门禁。
+
+阻塞与证据：
+
+- 无实现阻塞。姓名、照片、简历、联系方式、项目媒体和真实外链仍待用户提供。

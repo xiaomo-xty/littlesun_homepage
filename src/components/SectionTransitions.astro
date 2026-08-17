@@ -1,0 +1,70 @@
+<script>
+  const initializeSectionTransitions = () => {
+  const observed = new Map<Element, number>();
+  const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+
+  const setPresence = (element: HTMLElement, visible: boolean) => {
+    element.dataset.revealState = visible ? "visible" : "hidden";
+    window.dispatchEvent(new CustomEvent("homepage:section-presence", {
+      detail: {
+        id: element.id || element.dataset.reveal || "section",
+        visible,
+      },
+    }));
+  };
+
+  const revealImmediately = () => {
+    document.querySelectorAll<HTMLElement>("[data-reveal]").forEach((element) => {
+      const timer = observed.get(element);
+      if (timer) window.clearTimeout(timer);
+      setPresence(element, true);
+    });
+  };
+
+  if (reduceMotion.matches || !("IntersectionObserver" in window)) {
+    revealImmediately();
+  } else {
+    document.documentElement.classList.add("reveal-ready");
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        const element = entry.target as HTMLElement;
+        const pendingTimer = observed.get(element);
+        if (pendingTimer) window.clearTimeout(pendingTimer);
+
+        if (entry.isIntersecting) {
+          observed.delete(element);
+          setPresence(element, true);
+          return;
+        }
+
+        const timer = window.setTimeout(() => {
+          observed.delete(element);
+          setPresence(element, false);
+        }, 420);
+        observed.set(element, timer);
+      });
+    }, {
+      threshold: 0.12,
+      rootMargin: "-8% 0px -14% 0px",
+    });
+
+    document.querySelectorAll<HTMLElement>("[data-reveal]").forEach((element) => {
+      element.dataset.revealState = "hidden";
+      observer.observe(element);
+    });
+
+    reduceMotion.addEventListener("change", () => {
+      if (reduceMotion.matches) {
+        observer.disconnect();
+        document.documentElement.classList.remove("reveal-ready");
+        revealImmediately();
+      }
+    }, { once: true });
+  }
+
+  };
+
+  const startSectionTransitions = () => window.requestAnimationFrame(initializeSectionTransitions);
+  if (document.readyState === "complete") startSectionTransitions();
+  else window.addEventListener("load", startSectionTransitions, { once: true });
+</script>

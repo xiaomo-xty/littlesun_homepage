@@ -13,7 +13,7 @@ import "../styles/home.css";
   <main id="main-content">
     <HeroSection />
 
-    <section id="about" class="shell about-section">
+    <section id="about" class="shell about-section" data-reveal="about">
       <div class="section-heading">
         <h2>我在做什么</h2>
         <p>职业主轴是高性能图形、游戏引擎工具与跨平台系统。技术不是标签，而是我处理问题的方式。</p>
@@ -43,7 +43,7 @@ import "../styles/home.css";
       </div>
     </section>
 
-    <div class="technology-ribbon" aria-label="技术方向">
+    <div class="technology-ribbon" aria-label="技术方向" data-reveal="technology">
       <div class="shell pixel-type">
         C++&nbsp;&nbsp; RUST&nbsp;&nbsp; WGPU&nbsp;&nbsp; WEBGPU&nbsp;&nbsp; WASM&nbsp;&nbsp; GRAPHICS&nbsp;&nbsp; TOOLING&nbsp;&nbsp; CROSS-PLATFORM
       </div>
@@ -52,7 +52,7 @@ import "../styles/home.css";
     <ProjectStage />
     <ArticleList />
 
-    <section id="life" class="shell life-section">
+    <section id="life" class="shell life-section" data-reveal="life">
       <h2>屏幕之外</h2>
       <p>我喜欢 Minecraft 的开放玩法、塞尔达的探索感、三体的科幻尺度，也被动画与绘画中的光、材质和叙事节奏吸引。</p>
       <div class="interest-line" aria-label="生活兴趣">
@@ -67,7 +67,7 @@ import "../styles/home.css";
       <p class="replacement-note">替换为三张真实照片，保留自然构图和统一色调</p>
     </section>
 
-    <section id="contact" class="contact-section">
+    <section id="contact" class="contact-section" data-reveal="contact">
       <div class="shell contact-inner">
         <h2>来聊聊图形、工具和下一段工作。</h2>
         <p>简历、GitHub 和邮箱将在提供真实地址后上线。</p>
@@ -88,6 +88,9 @@ import "../styles/home.css";
         <footer>
           <strong>{site.title}</strong>
           <span>{site.domain}</span>
+          <a class="filing-link" href="https://beian.miit.gov.cn/" target="_blank" rel="noreferrer">
+            {site.icpBeian}
+          </a>
         </footer>
       </div>
     </section>
