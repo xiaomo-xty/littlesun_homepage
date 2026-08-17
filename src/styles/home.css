@@ -1489,6 +1489,20 @@ h3 {
   border-top: 1px solid rgb(7 17 26 / 0.25);
 }
 
+.contact-inner footer .filing-link {
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: nowrap;
+  opacity: 0.72;
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+  transition: opacity 0.2s ease;
+}
+
+.contact-inner footer .filing-link:hover {
+  opacity: 1;
+}
+
 @media (max-width: 960px) {
   .hero-grid {
     grid-template-columns: minmax(0, 1fr) minmax(320px, 0.8fr);
