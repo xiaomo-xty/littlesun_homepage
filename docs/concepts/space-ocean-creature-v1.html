@@ -1,0 +1,357 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Lumen Drifter - Creature Concept 01</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font-family: "Segoe UI", "Noto Sans SC", sans-serif;
+        background: #07141d;
+        color: #eaf5fb;
+        font-synthesis: none;
+      }
+
+      * { box-sizing: border-box; }
+
+      body {
+        min-width: 320px;
+        margin: 0;
+        background:
+          linear-gradient(90deg, rgb(74 152 197 / 0.035) 1px, transparent 1px),
+          linear-gradient(rgb(74 152 197 / 0.035) 1px, transparent 1px),
+          #07141d;
+        background-size: 48px 48px;
+      }
+
+      main {
+        width: min(100%, 1440px);
+        min-height: 900px;
+        margin: 0 auto;
+        padding: 34px 46px 42px;
+      }
+
+      header {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        align-items: end;
+        padding-bottom: 24px;
+        border-bottom: 1px solid #284456;
+      }
+
+      .eyebrow,
+      .index,
+      .label,
+      .metric,
+      .palette-name {
+        font-family: Consolas, "SFMono-Regular", monospace;
+        letter-spacing: 0;
+        text-transform: uppercase;
+      }
+
+      .eyebrow {
+        margin: 0 0 8px;
+        color: #75b9df;
+        font-size: 12px;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: clamp(34px, 4vw, 62px);
+        font-weight: 650;
+        line-height: 0.95;
+      }
+
+      .index {
+        color: #75b9df;
+        font-size: 13px;
+      }
+
+      .intro {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 278px;
+        gap: 32px;
+        margin-top: 28px;
+      }
+
+      .stage {
+        position: relative;
+        min-height: 560px;
+        overflow: hidden;
+        border: 1px solid #284456;
+        background: #0a1b26;
+      }
+
+      .stage::before {
+        position: absolute;
+        inset: 0;
+        background:
+          radial-gradient(circle at 58% 42%, rgb(54 148 203 / 0.12), transparent 44%),
+          linear-gradient(180deg, transparent 72%, rgb(4 14 21 / 0.48));
+        content: "";
+        pointer-events: none;
+      }
+
+      .stage svg {
+        position: absolute;
+        inset: 26px 14px 22px;
+        width: calc(100% - 28px);
+        height: calc(100% - 48px);
+      }
+
+      .stage-caption {
+        position: absolute;
+        right: 18px;
+        bottom: 16px;
+        display: flex;
+        gap: 18px;
+        color: #6e91a6;
+        font: 11px/1 Consolas, monospace;
+      }
+
+      aside {
+        display: flex;
+        min-width: 0;
+        flex-direction: column;
+        justify-content: space-between;
+      }
+
+      .summary {
+        margin: 0;
+        color: #a9c2d0;
+        font-size: 16px;
+        line-height: 1.7;
+      }
+
+      .principles {
+        margin-top: 28px;
+        border-top: 1px solid #284456;
+      }
+
+      .principle {
+        display: grid;
+        grid-template-columns: 30px 1fr;
+        gap: 12px;
+        padding: 16px 0;
+        border-bottom: 1px solid #1d3544;
+      }
+
+      .principle b {
+        color: #ef7f72;
+        font: 12px/1 Consolas, monospace;
+      }
+
+      .principle span {
+        color: #cfdee6;
+        font-size: 13px;
+        line-height: 1.45;
+      }
+
+      .palette {
+        padding-top: 24px;
+      }
+
+      .label {
+        margin-bottom: 12px;
+        color: #6e91a6;
+        font-size: 11px;
+      }
+
+      .swatches {
+        display: grid;
+        grid-template-columns: repeat(5, 1fr);
+        height: 34px;
+      }
+
+      .swatches i:nth-child(1) { background: #0b2431; }
+      .swatches i:nth-child(2) { background: #174b63; }
+      .swatches i:nth-child(3) { background: #2f82ab; }
+      .swatches i:nth-child(4) { background: #8bd3e6; }
+      .swatches i:nth-child(5) { background: #ef7f72; }
+
+      .palette-name {
+        margin-top: 9px;
+        color: #6e91a6;
+        font-size: 10px;
+      }
+
+      .anatomy {
+        display: grid;
+        grid-template-columns: 210px minmax(0, 1fr);
+        gap: 34px;
+        align-items: center;
+        margin-top: 30px;
+        padding-top: 28px;
+        border-top: 1px solid #284456;
+      }
+
+      .anatomy h2 {
+        margin: 0 0 10px;
+        font-size: 18px;
+        font-weight: 600;
+      }
+
+      .anatomy p {
+        margin: 0;
+        color: #7897a9;
+        font-size: 13px;
+        line-height: 1.55;
+      }
+
+      .anatomy-diagram {
+        height: 138px;
+        border-left: 1px solid #284456;
+        padding-left: 28px;
+      }
+
+      .anatomy-diagram svg { width: 100%; height: 100%; }
+
+      @media (max-width: 820px) {
+        main { min-height: auto; padding: 24px 18px 34px; }
+        .intro { grid-template-columns: 1fr; }
+        .stage { min-height: 410px; }
+        aside { gap: 28px; }
+        .anatomy { grid-template-columns: 1fr; }
+        .anatomy-diagram { border-top: 1px solid #284456; border-left: 0; padding: 24px 0 0; }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <div>
+          <p class="eyebrow">Space ocean / ambient creature</p>
+          <h1>Lumen Drifter</h1>
+        </div>
+        <span class="index">Concept 01 / side profile</span>
+      </header>
+
+      <section class="intro">
+        <div class="stage">
+          <svg viewBox="0 0 960 520" role="img" aria-label="Lumen Drifter creature side profile concept">
+            <g fill="none" stroke="#214456" stroke-width="1" opacity="0.72">
+              <path d="M 16 102 C 214 44 390 126 570 76 C 730 32 842 74 946 50" />
+              <path d="M 8 404 C 182 362 326 434 484 390 C 656 342 788 418 952 368" />
+            </g>
+
+            <g fill="#2f82ab" opacity="0.62">
+              <rect x="76" y="108" width="6" height="6" />
+              <rect x="142" y="354" width="10" height="10" />
+              <rect x="823" y="123" width="7" height="7" />
+              <rect x="882" y="327" width="4" height="4" />
+              <rect x="735" y="429" width="8" height="8" />
+              <rect x="351" y="74" width="5" height="5" />
+            </g>
+
+            <g id="creature">
+              <path
+                d="M 296 226 C 238 170 154 160 92 190 C 150 214 184 241 208 265 C 166 294 134 333 119 377 C 197 364 254 330 299 294 C 276 273 275 249 296 226 Z"
+                fill="#174b63"
+                stroke="#55a8cb"
+                stroke-width="3"
+              />
+              <path
+                d="M 735 255 C 726 207 661 171 561 168 C 452 165 366 187 286 229 C 252 247 249 276 282 297 C 355 342 457 351 563 335 C 657 320 725 296 735 255 Z"
+                fill="#174b63"
+                stroke="#8bd3e6"
+                stroke-width="4"
+              />
+              <path
+                d="M 532 174 C 493 105 402 72 329 98 C 389 119 421 149 450 180 C 480 180 507 178 532 174 Z"
+                fill="#246e8d"
+                stroke="#65b5d2"
+                stroke-width="3"
+              />
+              <path
+                d="M 528 329 C 495 390 425 425 354 414 C 410 381 437 346 454 337 C 481 336 505 333 528 329 Z"
+                fill="#246e8d"
+                stroke="#65b5d2"
+                stroke-width="3"
+              />
+              <path
+                d="M 620 312 C 602 376 545 414 476 411 C 516 376 527 343 544 326 C 569 323 594 318 620 312 Z"
+                fill="#2f82ab"
+                stroke="#8bd3e6"
+                stroke-width="3"
+              />
+              <path d="M 686 277 C 705 282 717 278 725 270" fill="none" stroke="#0b2431" stroke-width="3" stroke-linecap="round" />
+              <circle cx="682" cy="230" r="12" fill="#07141d" stroke="#8bd3e6" stroke-width="4" />
+              <circle cx="686" cy="226" r="4" fill="#ef7f72" />
+
+              <path d="M 659 191 C 562 215 478 222 389 249 C 349 261 325 270 294 274" fill="none" stroke="#8bd3e6" stroke-width="2" opacity="0.5" />
+              <g fill="#8bd3e6" opacity="0.72">
+                <circle cx="629" cy="199" r="4" />
+                <circle cx="579" cy="209" r="4" />
+                <circle cx="527" cy="218" r="4" />
+                <circle cx="474" cy="225" r="4" />
+                <circle cx="421" cy="240" r="4" />
+                <circle cx="369" cy="257" r="4" />
+                <circle cx="319" cy="271" r="4" />
+              </g>
+
+              <g fill="#75b9df" opacity="0.52">
+                <rect x="573" y="267" width="8" height="8" />
+                <rect x="539" y="283" width="5" height="5" />
+                <rect x="508" y="260" width="4" height="4" />
+                <rect x="447" y="292" width="7" height="7" />
+                <rect x="404" y="275" width="4" height="4" />
+              </g>
+            </g>
+
+            <g font-family="Consolas, monospace" font-size="12" fill="#6e91a6">
+              <path d="M 674 207 L 760 134 L 842 134" fill="none" stroke="#42677c" />
+              <text x="850" y="138">ONE VISIBLE EYE</text>
+              <path d="M 542 346 L 670 452 L 772 452" fill="none" stroke="#42677c" />
+              <text x="780" y="456">SOFT LEAF FIN</text>
+              <path d="M 184 238 L 118 94 L 44 94" fill="none" stroke="#42677c" />
+              <text x="44" y="82">TWO-LOBE TAIL</text>
+            </g>
+          </svg>
+          <div class="stage-caption"><span>PROFILE 01</span><span>NO SPIKES</span><span>NO MASK FACE</span></div>
+        </div>
+
+        <aside>
+          <div>
+            <p class="summary">A calm, readable space-ocean creature designed for slow procedural swimming. The silhouette stays friendly at small sizes and avoids facial symmetry that can feel uncanny.</p>
+            <div class="principles">
+              <div class="principle"><b>01</b><span>Side profile with one small eye. No front-facing mask expression.</span></div>
+              <div class="principle"><b>02</b><span>All fins use continuous curves. No hard triangles or weapon-like spikes.</span></div>
+              <div class="principle"><b>03</b><span>Body and tail remain one readable silhouette before any glow or particles.</span></div>
+              <div class="principle"><b>04</b><span>Pixel marks are surface detail, not anatomy.</span></div>
+            </div>
+          </div>
+          <div class="palette">
+            <div class="label">Core palette</div>
+            <div class="swatches"><i></i><i></i><i></i><i></i><i></i></div>
+            <div class="palette-name">INK / DEEP TEAL / OCEAN BLUE / LUMEN / CORAL</div>
+          </div>
+        </aside>
+      </section>
+
+      <section class="anatomy">
+        <div>
+          <div class="label">Motion anatomy</div>
+          <h2>11-joint spine</h2>
+          <p>The head steers. Each joint follows at a fixed distance with a limited turn angle. Fins inherit local curvature.</p>
+        </div>
+        <div class="anatomy-diagram">
+          <svg viewBox="0 0 980 150" role="img" aria-label="Joint chain and width profile">
+            <path d="M 66 72 C 210 18 352 120 502 70 C 646 22 756 58 900 60" fill="none" stroke="#31576b" stroke-width="42" stroke-linecap="round" opacity="0.32" />
+            <path d="M 66 72 C 210 18 352 120 502 70 C 646 22 756 58 900 60" fill="none" stroke="#75b9df" stroke-width="2" />
+            <g fill="#07141d" stroke="#8bd3e6" stroke-width="3">
+              <circle cx="66" cy="72" r="8" /><circle cx="148" cy="52" r="7" /><circle cx="230" cy="55" r="7" />
+              <circle cx="312" cy="77" r="7" /><circle cx="394" cy="91" r="7" /><circle cx="476" cy="78" r="7" />
+              <circle cx="558" cy="55" r="7" /><circle cx="640" cy="44" r="7" /><circle cx="722" cy="49" r="7" />
+              <circle cx="804" cy="57" r="7" /><circle cx="886" cy="60" r="7" />
+            </g>
+            <circle cx="66" cy="72" r="4" fill="#ef7f72" />
+            <g fill="#6e91a6" font-family="Consolas, monospace" font-size="11">
+              <text x="46" y="118">HEAD</text><text x="858" y="105">TAIL</text><text x="431" y="132">MAX BEND 22.5 DEG</text>
+            </g>
+          </svg>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>
