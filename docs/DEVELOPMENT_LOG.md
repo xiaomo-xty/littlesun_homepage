@@ -534,14 +534,15 @@
 - 用户否决直接实现的程序化鱼，要求恢复“概念图审核 -> 独立动画 Demo -> 主页集成”的三段式门禁。
 - 将被否决的实现保存到 `feature/v0.6-procedural-fish` 对应 stash，主页工作区恢复到 `develop` 的 v0.5 状态。
 - 在独立 `docs/v0.6-creature-concept` 分支制作第一版自创鱼类概念 `Lumen Drifter`，内部复核后判定不再推进。
-- 按用户建议改用成熟生物原型，制作第二版 `Drift Companions`：瓶鼻海豚作为低频主生物，无表情月水母作为高频软体生物，方形像素浮游物保持独立特效层。
+- 按用户建议改用成熟生物原型，制作第二版 `Drift Companions`；用户指出自绘海豚短吻仍存在鸟喙感和吸嘴感，因此否决自绘海豚部分。
+- 第三版直接采用 Twemoji `1F42C` 原始开源 SVG 作为海豚造型，概念板仅执行镜像和缩放；将 CC BY 4.0 来源、署名与后续修改说明保存在 `docs/concepts/vendor/TWEMOJI_ATTRIBUTION.md`。
 - 将动画复杂度收敛为海豚 7 个控制点和水母 1 个钟罩弹簧值，避免再次依赖复杂的整身动态轮廓。
 - 在 1280 x 720 浏览器视口完成概念板检查，完整页面宽 1265px、高 931px，无横向溢出，3 个 SVG 均正常渲染。
 
 当前现象：
 
 - 主页源码未修改，`develop` 仍保持 v0.5。
-- `Concept 02` 仅处于静态审核状态，尚无动画 Demo。
+- `Concept 03` 仅处于静态审核状态，尚无动画 Demo；海豚资产实际加载成功，浏览器 console warning/error 为空。
 - 概念板预览地址为 `http://127.0.0.1:4330/space-ocean-creatures-v2.html`。
 
 下一步最小动作：
