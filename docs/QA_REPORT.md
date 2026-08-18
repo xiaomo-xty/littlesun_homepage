@@ -269,3 +269,53 @@
 ### 结论
 
 `v0.4.0` 满足当前背景生态、界面减法、深浅主题、响应式、降级、交互与构建门槛，可以合回 `develop`。`main` 继续保持未发布状态，等待用户决定正式发布。
+
+## 2026-08-19 / v0.5 Space Ocean Browser QA
+
+### 环境
+
+- 分支：`test/v0.5-browser-qa`
+- 本地预览：`http://127.0.0.1:4326/`
+- 内置浏览器视口：731 x 912，命中 `< 768px` 移动布局
+- 主题：浅色与深色
+- 后端：默认 WebGPU、强制 WebGL2、强制 static
+
+### 渲染与生态
+
+| 路径 | 结果 | 证据 |
+| --- | --- | --- |
+| 默认 | `webgpu / balanced / ready` | `data-creature="space-ray"`，10 个群游生物，6 个初始实体 |
+| `?ambient=webgl2` | `webgl2 / balanced / ready` | 星鳐与群游保留，页面无横向溢出 |
+| `?ambient=static` | `static / static / ready` | Canvas opacity 为 0，1 个静态星鳐和 3 条曲线流线 |
+
+- 旧 `.ambient-static-creature` 节点数为 0，源代码中无 `arthropod`、腿部几何、脚点实例或接触阴影。
+- 浅色页基底为 `#f7f8f6`，`--shadow` 为 `transparent`；深色 Canvas opacity 为 0.56。
+- 轻量雾化层和项目卡磨砂表面未造成文字裁切或页面溢出。
+- 指针行为标记为 `repel`，斥力方向、群游规则和弹簧尾带由 8 个纯函数测试覆盖。
+
+### 页面交互
+
+- 项目区首次进入后发牌周期为 1，下一张按钮可用。
+- 从 SceneScope 切换到商业 C++ 开发后，卡内和页面横向溢出均为 0。
+- 项目详情展开后 `aria-expanded="true"`，详情面板横向与纵向内部溢出均为 0。
+- 移动菜单打开时 `aria-expanded="true"`，菜单内部溢出为 0；点击“生活”后导航到 `#life` 并关闭菜单。
+
+### 内容链接
+
+- GitHub：`https://github.com/xiaomo-xty`，新窗口，`rel="noreferrer"`。
+- 博客：`https://blog.littlesun.space`，新窗口，`rel="noreferrer"`。
+- ICP：`湘ICP备2026030115号-1`，目标为 `https://beian.miit.gov.cn/`。
+- 简历、邮箱、人像和项目媒体继续使用明确占位，没有虚构信息。
+
+### 质量门禁
+
+- `bun run test`：8 passed、0 failed。
+- `bun run check`：0 errors、0 warnings、0 hints。
+- `bun run build`：静态生产构建成功。
+- `git diff --check`：通过。
+- 未修改 `D:\project\blog`。
+
+### 剩余风险
+
+- 当前内置浏览器无法切换到 1440px 宽视口，本轮完整交互截图以 731px 移动断点为主；桌面布局沿用 v0.4 已通过的结构，背景为固定全屏正交场景。
+- 后续接入真实人像和项目媒体后，需要重新检查背景安全区与磨砂透明度。
