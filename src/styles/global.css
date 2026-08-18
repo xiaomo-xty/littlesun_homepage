@@ -20,7 +20,7 @@
   --accent: #53a3f2;
   --accent-strong: #257bc6;
   --accent-ink: #08131e;
-  --shadow: rgb(36 70 102 / 0.16);
+  --shadow: transparent;
   --focus: #146dbb;
   --radius-control: 3px;
   --radius-panel: 4px;

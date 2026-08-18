@@ -114,41 +114,55 @@
 
 .ambient-world canvas {
   opacity: 0;
-  filter: saturate(1.06) contrast(1.04);
+  filter: saturate(0.92) contrast(0.96);
   transition: opacity 560ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .ambient-world[data-status="ready"]:not([data-backend="static"]) canvas {
-  opacity: 0.9;
+  opacity: 0.48;
 }
 
 .ambient-static-fallback {
-  opacity: 0.84;
+  opacity: 0.58;
   transition: opacity 520ms ease;
 }
 
 .ambient-world[data-status="ready"]:not([data-backend="static"]) .ambient-static-fallback {
-  opacity: 0.16;
+  opacity: 0.07;
 }
 
-.ambient-static-grid {
+.ambient-static-flow {
   position: absolute;
-  inset: -2px;
-  background-image:
-    linear-gradient(var(--line) 1px, transparent 1px),
-    linear-gradient(90deg, var(--line) 1px, transparent 1px);
-  background-size: 72px 72px;
-  mask-image: linear-gradient(to bottom, transparent 4%, rgb(0 0 0 / 0.28) 36%, transparent 92%);
-  opacity: 0.13;
+  right: -10%;
+  left: -10%;
+  height: 28%;
+  border-top: 1px solid color-mix(in srgb, var(--line-strong) 54%, transparent);
+  border-radius: 50%;
+  opacity: 0.26;
+  transform: rotate(-2deg);
+}
+
+.ambient-static-flow-one { top: 18%; }
+.ambient-static-flow-two { top: 48%; transform: rotate(3deg) scaleX(1.08); }
+.ambient-static-flow-three { top: 78%; transform: rotate(-4deg) scaleX(0.92); }
+
+.ambient-static-flow::after {
+  position: absolute;
+  top: 28%;
+  right: 8%;
+  left: 6%;
+  height: 70%;
+  border-top: 1px solid color-mix(in srgb, var(--accent) 42%, transparent);
+  border-radius: 50%;
+  content: "";
 }
 
 .ambient-static-shape {
   position: absolute;
   display: block;
   border: 1px solid var(--line-strong);
-  background: color-mix(in srgb, var(--surface-strong) 72%, transparent);
-  box-shadow: 0 10px 24px rgb(var(--ink-rgb) / 0.06);
-  opacity: 0.58;
+  background: color-mix(in srgb, var(--surface-strong) 42%, transparent);
+  opacity: 0.4;
 }
 
 .ambient-static-shape-one {
@@ -156,6 +170,7 @@
   right: 7%;
   width: min(28vw, 420px);
   aspect-ratio: 1.25;
+  border-radius: 52% 48% 58% 42% / 44% 56% 42% 58%;
   transform: rotate(7deg);
 }
 
@@ -164,6 +179,7 @@
   left: 4%;
   width: min(19vw, 290px);
   aspect-ratio: 0.82;
+  border-radius: 46% 54% 42% 58% / 58% 44% 56% 42%;
   transform: rotate(-9deg);
 }
 
@@ -172,52 +188,48 @@
   bottom: 6%;
   width: min(22vw, 330px);
   aspect-ratio: 1.6;
+  border-radius: 999px;
   transform: rotate(-4deg);
 }
 
-.ambient-static-creature {
+.ambient-static-ray {
   position: absolute;
-  top: 35%;
-  right: 26%;
-  width: 62px;
-  height: 34px;
-  border: 2px solid var(--accent-strong);
-  border-radius: 48% 56% 52% 46%;
-  background: color-mix(in srgb, var(--accent) 28%, var(--surface));
-  box-shadow: 0 8px 18px rgb(var(--ink-rgb) / 0.08);
-  opacity: 0.72;
-  transform: rotate(-14deg);
+  top: 34%;
+  right: 24%;
+  width: 86px;
+  height: 46px;
+  border: 2px solid color-mix(in srgb, var(--accent-strong) 78%, transparent);
+  border-radius: 52% 48% 58% 42% / 20% 20% 80% 80%;
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  opacity: 0.58;
+  transform: rotate(-10deg) skewX(-6deg);
 }
 
-.ambient-static-creature::after {
+.ambient-static-ray::before {
   position: absolute;
-  top: 8px;
-  right: -13px;
-  width: 17px;
-  height: 17px;
-  border: 2px solid var(--accent-strong);
+  top: 17px;
+  right: -20px;
+  width: 34px;
+  height: 10px;
+  border-top: 2px solid color-mix(in srgb, var(--accent-strong) 72%, transparent);
   border-radius: 50%;
-  background: var(--surface-strong);
   content: "";
 }
 
-.ambient-static-creature i {
+.ambient-static-ray i {
   position: absolute;
-  left: 16px;
-  width: 30px;
-  height: 1px;
-  background: var(--line-strong);
-  transform-origin: center;
+  top: 23px;
+  left: -58px;
+  width: 68px;
+  height: 28px;
+  border-top: 1px solid var(--accent);
+  border-radius: 50%;
+  transform-origin: right center;
 }
 
-.ambient-static-creature i:nth-child(1) { top: 2px; transform: translateX(-22px) rotate(26deg); }
-.ambient-static-creature i:nth-child(2) { top: 8px; transform: translateX(-28px) rotate(10deg); }
-.ambient-static-creature i:nth-child(3) { top: 20px; transform: translateX(-28px) rotate(-10deg); }
-.ambient-static-creature i:nth-child(4) { top: 28px; transform: translateX(-22px) rotate(-26deg); }
-.ambient-static-creature i:nth-child(5) { top: 2px; transform: translateX(24px) rotate(-26deg); }
-.ambient-static-creature i:nth-child(6) { top: 8px; transform: translateX(30px) rotate(-10deg); }
-.ambient-static-creature i:nth-child(7) { top: 20px; transform: translateX(30px) rotate(10deg); }
-.ambient-static-creature i:nth-child(8) { top: 28px; transform: translateX(24px) rotate(26deg); }
+.ambient-static-ray i:nth-child(1) { transform: rotate(-8deg); }
+.ambient-static-ray i:nth-child(2) { transform: rotate(2deg) translateY(4px); }
+.ambient-static-ray i:nth-child(3) { transform: rotate(10deg) translateY(8px); }
 
 .ambient-static-pixel {
   position: absolute;
@@ -234,30 +246,29 @@
 
 .ambient-postprocess {
   background:
-    linear-gradient(to bottom, transparent 50%, rgb(var(--ink-rgb) / 0.025) 50%) 0 0 / 100% 4px,
-    radial-gradient(ellipse at center, transparent 52%, rgb(var(--page-rgb) / 0.46) 100%);
-  mix-blend-mode: soft-light;
-  opacity: 0.42;
+    linear-gradient(rgb(var(--page-rgb) / 0.08), rgb(var(--page-rgb) / 0.14)),
+    radial-gradient(ellipse at center, transparent 46%, rgb(var(--page-rgb) / 0.34) 100%);
+  backdrop-filter: blur(1.1px) saturate(0.88);
+  -webkit-backdrop-filter: blur(1.1px) saturate(0.88);
+  opacity: 0.66;
 }
 
 :root[data-theme="dark"] .ambient-world[data-status="ready"]:not([data-backend="static"]) canvas {
-  opacity: 0.9;
-}
-
-:root[data-theme="dark"] .ambient-postprocess {
   opacity: 0.56;
 }
 
-:root[data-theme="dark"] .ambient-static-shape {
-  background: color-mix(in srgb, var(--surface-strong) 42%, transparent);
-  box-shadow: none;
-  opacity: 0.36;
+:root[data-theme="dark"] .ambient-postprocess {
+  opacity: 0.52;
 }
 
-:root[data-theme="dark"] .ambient-static-creature {
-  background: color-mix(in srgb, var(--accent) 18%, var(--surface));
-  box-shadow: none;
-  opacity: 0.58;
+:root[data-theme="dark"] .ambient-static-shape {
+  background: color-mix(in srgb, var(--surface-strong) 26%, transparent);
+  opacity: 0.3;
+}
+
+:root[data-theme="dark"] .ambient-static-ray {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  opacity: 0.5;
 }
 
 main {
@@ -440,6 +451,8 @@ h3 {
 .command-secondary {
   background: rgb(var(--page-rgb) / 0.72);
   color: var(--ink);
+  backdrop-filter: blur(10px) saturate(1.08);
+  -webkit-backdrop-filter: blur(10px) saturate(1.08);
 }
 
 .quick-links {
@@ -849,7 +862,9 @@ h3 {
 .deck-preview-face {
   overflow: hidden;
   border-color: var(--line-strong);
-  background: var(--surface-muted);
+  background: color-mix(in srgb, var(--surface-muted) 82%, transparent);
+  backdrop-filter: blur(9px) saturate(1.04);
+  -webkit-backdrop-filter: blur(9px) saturate(1.04);
   box-shadow: 0 18px 38px var(--shadow);
   pointer-events: none;
 }
@@ -861,7 +876,9 @@ h3 {
   min-height: 690px;
   border: 2px solid var(--accent);
   border-radius: var(--radius-panel);
-  background: var(--surface);
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  backdrop-filter: blur(10px) saturate(1.04);
+  -webkit-backdrop-filter: blur(10px) saturate(1.04);
   box-shadow: 0 24px 54px var(--shadow);
 }
 
@@ -1674,9 +1691,10 @@ h3 {
     inset: 15px -12px -10px 14px;
   }
 
-  .ambient-static-grid {
-    background-size: 54px 54px;
-    opacity: 0.1;
+  .ambient-static-flow {
+    right: -28%;
+    left: -28%;
+    opacity: 0.2;
   }
 
   .ambient-static-shape-one {
@@ -1694,9 +1712,9 @@ h3 {
     width: 62vw;
   }
 
-  .ambient-static-creature {
+  .ambient-static-ray {
     right: 12%;
-    transform: scale(0.78) rotate(-14deg);
+    transform: scale(0.76) rotate(-10deg) skewX(-6deg);
   }
 
   .about-section,
@@ -1998,8 +2016,16 @@ h3 {
 
 @media (prefers-reduced-transparency: reduce) {
   .site-header,
-  .command-secondary {
+  .command-secondary,
+  .deck-preview-face,
+  .project-card {
     background: var(--page);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+
+  .ambient-postprocess {
+    background: rgb(var(--page-rgb) / 0.22);
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
   }

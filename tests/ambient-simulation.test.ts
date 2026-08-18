@@ -1,9 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import {
+  advanceRibbonChain,
   canFracture,
   fracturePattern,
   pointerRepulsion,
   resolveCircleCollision,
+  sampleOceanFlow,
+  schoolingSteer,
   type SolidBodyState,
 } from "../src/lib/ambientSimulation";
 
@@ -46,5 +49,38 @@ describe("ambient entity rules", () => {
     expect(canFracture(0, 1.1, 6, 14)).toBe(false);
     expect(canFracture(2, 0.4, 6, 14)).toBe(false);
     expect(canFracture(2, 1.1, 14, 14)).toBe(false);
+  });
+
+  test("ocean flow is smooth and bounded", () => {
+    const first = sampleOceanFlow({ x: 1.2, y: -0.4 }, 3);
+    const second = sampleOceanFlow({ x: 1.21, y: -0.39 }, 3.01);
+    expect(Math.hypot(first.x, first.y)).toBeLessThanOrEqual(1.00001);
+    expect(Math.hypot(first.x - second.x, first.y - second.y)).toBeLessThan(0.05);
+  });
+
+  test("schooling separates close organisms while respecting force limits", () => {
+    const subject = { x: 0, y: 0, vx: 0.4, vy: 0 };
+    const closeNeighbor = { x: 0.1, y: 0, vx: 0.4, vy: 0 };
+    const force = schoolingSteer(subject, [subject, closeNeighbor], {
+      neighborRadius: 2,
+      separationRadius: 0.5,
+      separationWeight: 1,
+      alignmentWeight: 0.2,
+      cohesionWeight: 0.05,
+      maxForce: 0.8,
+    });
+    expect(force.x).toBeLessThan(0);
+    expect(Math.hypot(force.x, force.y)).toBeLessThanOrEqual(0.80001);
+  });
+
+  test("ribbon chain keeps its head attached and pulls trailing points", () => {
+    const points = [
+      { x: 0, y: 0, vx: 0, vy: 0 },
+      { x: -1.2, y: 0, vx: 0, vy: 0 },
+      { x: -2.4, y: 0, vx: 0, vy: 0 },
+    ];
+    advanceRibbonChain(points, { x: 1, y: 0.5 }, 0.1, 0.5);
+    expect(points[0]).toEqual({ x: 1, y: 0.5, vx: 0, vy: 0 });
+    expect(points[1].x).toBeGreaterThan(-1.2);
   });
 });

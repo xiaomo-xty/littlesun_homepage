@@ -491,3 +491,38 @@
 阻塞与证据：
 
 - 无实现阻塞。真实个人资料与媒体资源仍待用户提供。
+
+## 2026-08-19 / v0.5 Space Ocean
+
+今天完成：
+
+- 检索 WebGPU Samples 的 compute boids、Three.js Catmull-Rom 曲线与 MDN `backdrop-filter`，将采用范围和性能取舍写入 `docs/V0.5_SPACE_OCEAN_DESIGN.md`。
+- 删除程序化八足生物、腿部动态缓冲、脚点实例和全部椭圆接触阴影。
+- 将主生物改为由二次贝塞尔轮廓与三条弹簧曲线尾带组成的星鳐，游走仍受流场、边界、内容安全区、实体与鼠标斥力共同影响。
+- 加入少量分离、对齐、聚合驱动的群游微生物；鼠标靠近时散开，离开后重新聚合。
+- 将漂浮实体改为椭圆盘、胶囊和弯叶轮廓，保留碰撞、旋转、推动和有界破碎行为。
+- 加入多条 Catmull-Rom 流线，并让像素粒子沿解析 curl 流场缓慢漂移。
+- 将流场采样、群游 steering 和弹簧尾带推进抽为纯函数，单元测试从 5 个扩展到 8 个。
+- 降低 Canvas 总透明度与对比度，用轻量雾化后处理隔离正文；项目卡和次按钮使用克制的磨砂表面，并提供 reduced-transparency 纯色回退。
+- 浅色主题的 `--shadow` 设为透明，删除贴片感阴影；深色仍保留必要层级。
+- 静态降级同步改为曲线流线、柔软实体和星鳐轮廓，不再出现蜘蛛形态。
+- 接入真实 GitHub `https://github.com/xiaomo-xty` 与博客 `https://blog.littlesun.space`，简历和邮箱继续使用明确占位。
+
+当前现象：
+
+- 当前浏览器窄视口默认路径为 `webgpu / balanced / ready`，星鳐标记为 `space-ray`，10 个群游生物与 6 个初始实体正常初始化。
+- 强制 WebGL2 为 `webgl2 / balanced / ready`，强制 static 为 `static / static / ready`。
+- 静态路径包含 1 个星鳐轮廓和 3 条流线，旧 `.ambient-static-creature` 节点数量为 0。
+- 浅色背景为 `#f7f8f6`，`--shadow` 为 `transparent`；深浅主题均无页面水平溢出。
+- GitHub、博客和 ICP 备案链接均保留真实目标地址。
+- `bun run test`：8 passed、0 failed。
+- `bun run check`：0 errors、0 warnings、0 hints。
+- `bun run build`：静态生产构建成功。
+
+下一步最小动作：
+
+- 将功能分支合入 `develop`，建立独立 `test/v0.5-browser-qa` 分支完成最终回归与 QA 记录。
+
+阻塞与证据：
+
+- 无实现阻塞。当前内置浏览器可视宽度为 731px，完整桌面宽屏截图需要在 QA 分支继续补充；姓名、人像、简历、邮箱和项目媒体仍待用户提供。
