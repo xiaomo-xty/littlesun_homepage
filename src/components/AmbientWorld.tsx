@@ -1,28 +1,40 @@
 import { useEffect, useRef } from "react";
 import * as THREE from "three/webgpu";
+import {
+  canFracture,
+  fracturePattern,
+  pointerRepulsion,
+  resolveCircleCollision,
+  type CollisionResult,
+  type SolidBodyState,
+  type SolidKind,
+  type Vector2Like,
+} from "../lib/ambientSimulation";
 
 type Disposable = { dispose: () => void };
 type BackendFlags = { isWebGPUBackend?: boolean; isWebGLBackend?: boolean };
 
 type SceneProfile = {
   energy: number;
-  geometry: number;
+  entity: number;
   particle: number;
-  raySpeed: number;
-  rayBiasY: number;
+  creatureSpeed: number;
+  creatureBiasY: number;
 };
 
-type AmbientShape = {
+type AmbientEntity = SolidBodyState & {
+  id: number;
+  kind: SolidKind;
+  level: number;
   group: THREE.Group;
   fill: THREE.MeshBasicMaterial;
   edge: THREE.LineBasicMaterial;
-  nx: number;
-  ny: number;
+  shadow: THREE.MeshBasicMaterial;
+  alive: boolean;
+  hit: number;
+  fractureCooldown: number;
   phase: number;
-  amplitudeX: number;
-  amplitudeY: number;
-  rotation: number;
-  scale: number;
+  depth: number;
 };
 
 type PixelState = {
@@ -43,14 +55,18 @@ type SafeZone = {
   bottom: number;
 };
 
+type FractureRequest = {
+  entity: AmbientEntity;
+  impact: number;
+};
+
 const profiles: Record<string, SceneProfile> = {
-  top: { energy: 1, geometry: 1, particle: 1, raySpeed: 1, rayBiasY: 0.12 },
-  about: { energy: 0.72, geometry: 0.82, particle: 0.58, raySpeed: 0.7, rayBiasY: -0.08 },
-  technology: { energy: 0.88, geometry: 1.08, particle: 0.8, raySpeed: 0.82, rayBiasY: 0.2 },
-  projects: { energy: 1.12, geometry: 1.18, particle: 1.15, raySpeed: 1.08, rayBiasY: 0.04 },
-  articles: { energy: 0.58, geometry: 0.7, particle: 0.42, raySpeed: 0.58, rayBiasY: -0.2 },
-  life: { energy: 0.92, geometry: 0.9, particle: 0.92, raySpeed: 0.9, rayBiasY: 0.18 },
-  contact: { energy: 0.64, geometry: 0.72, particle: 0.48, raySpeed: 0.62, rayBiasY: 0 },
+  top: { energy: 1, entity: 0.92, particle: 0.86, creatureSpeed: 0.9, creatureBiasY: 0.12 },
+  about: { energy: 0.7, entity: 0.72, particle: 0.52, creatureSpeed: 0.68, creatureBiasY: -0.08 },
+  projects: { energy: 1.12, entity: 1.18, particle: 1.08, creatureSpeed: 1.14, creatureBiasY: 0.04 },
+  articles: { energy: 0.56, entity: 0.62, particle: 0.38, creatureSpeed: 0.58, creatureBiasY: -0.2 },
+  life: { energy: 0.9, entity: 0.88, particle: 0.84, creatureSpeed: 0.92, creatureBiasY: 0.18 },
+  contact: { energy: 0.62, entity: 0.66, particle: 0.44, creatureSpeed: 0.62, creatureBiasY: 0 },
 };
 
 const defaultProfile = profiles.top;
@@ -85,6 +101,10 @@ export default function AmbientWorld() {
 
     host.dataset.backend = "static";
     host.dataset.quality = "static";
+    host.dataset.creature = "arthropod";
+    host.dataset.pointerForce = "repel";
+    host.dataset.entityCount = "0";
+    host.dataset.fractureCount = "0";
     document.documentElement.dataset.ambientBackend = "static";
 
     if (staticOnly) {
@@ -101,10 +121,10 @@ export default function AmbientWorld() {
         resources.add(resource);
         return resource;
       };
-      const balanced = lowPower || mobile;
       const webGPUAvailable = window.isSecureContext && "gpu" in navigator;
       const forceWebGL = requestedBackend === "webgl2" || !webGPUAvailable;
-      const random = seededRandom(20260816);
+      const balanced = lowPower || mobile || forceWebGL;
+      const random = seededRandom(20260818);
       const renderer = new THREE.WebGPURenderer({
         canvas,
         alpha: true,
@@ -152,6 +172,10 @@ export default function AmbientWorld() {
       let currentProfile = { ...defaultProfile };
       let targetProfile = { ...defaultProfile };
       let pulse = 0;
+      let fractureCount = 0;
+      let hasRendered = false;
+      let nextEntityId = 1;
+      let lightTheme = true;
       const pulseOrigin = new THREE.Vector2();
 
       const pointer = {
@@ -166,64 +190,27 @@ export default function AmbientWorld() {
 
       const palette = {
         accent: new THREE.Color(),
+        accentStrong: new THREE.Color(),
         line: new THREE.Color(),
         surface: new THREE.Color(),
+        ink: new THREE.Color(),
       };
-      let themeContrast = 1;
-
-      const shapes: AmbientShape[] = [];
-      const shapeCount = balanced ? 6 : 10;
-      for (let index = 0; index < shapeCount; index += 1) {
-        const geometry = register(new THREE.BoxGeometry(
-          0.9 + random() * 1.8,
-          0.7 + random() * 1.5,
-          0.03 + random() * 0.05,
-        ));
-        const fill = register(new THREE.MeshBasicMaterial({
-          transparent: true,
-          opacity: 0.025,
-          depthWrite: false,
-        }));
-        const mesh = new THREE.Mesh(geometry, fill);
-        const edgeGeometry = register(new THREE.EdgesGeometry(geometry));
-        const edge = register(new THREE.LineBasicMaterial({
-          transparent: true,
-          opacity: 0.2,
-          depthWrite: false,
-        }));
-        const edges = new THREE.LineSegments(edgeGeometry, edge);
-        const group = new THREE.Group();
-        group.add(mesh, edges);
-        world.add(group);
-        shapes.push({
-          group,
-          fill,
-          edge,
-          nx: random() * 1.9 - 0.95,
-          ny: random() * 1.8 - 0.9,
-          phase: random() * Math.PI * 2,
-          amplitudeX: 0.28 + random() * 0.72,
-          amplitudeY: 0.2 + random() * 0.58,
-          rotation: (random() - 0.5) * 0.5,
-          scale: 0.72 + random() * 0.52,
-        });
-      }
 
       const particleCount = balanced ? 34 : 72;
       const particleGeometry = register(new THREE.BoxGeometry(0.055, 0.055, 0.035));
       const particleMaterial = register(new THREE.MeshBasicMaterial({
         transparent: true,
-        opacity: balanced ? 0.48 : 0.62,
+        opacity: balanced ? 0.34 : 0.46,
         depthWrite: false,
       }));
       const particleMesh = new THREE.InstancedMesh(particleGeometry, particleMaterial, particleCount);
       particleMesh.frustumCulled = false;
       world.add(particleMesh);
-      const particleMatrix = new THREE.Matrix4();
+      const sharedMatrix = new THREE.Matrix4();
       const particles: PixelState[] = Array.from({ length: particleCount }, () => ({
         x: random() * 12 - 6,
         y: random() * 10 - 5,
-        z: -1.5 - random() * 4,
+        z: -2.4 - random() * 3.2,
         vx: 0,
         vy: 0,
         size: 0.55 + random() * 1.35,
@@ -231,77 +218,158 @@ export default function AmbientWorld() {
         speed: 0.08 + random() * 0.22,
       }));
 
-      const rayShape = new THREE.Shape();
-      rayShape.moveTo(0.74, 0);
-      rayShape.bezierCurveTo(0.28, 0.16, -0.26, 0.58, -1.02, 0.4);
-      rayShape.quadraticCurveTo(-0.56, 0.04, -0.18, -0.07);
-      rayShape.lineTo(-0.66, -0.37);
-      rayShape.bezierCurveTo(-0.08, -0.46, 0.4, -0.14, 0.74, 0);
-      const rayGeometry = register(new THREE.ShapeGeometry(rayShape));
-      const rayMaterial = register(new THREE.MeshBasicMaterial({
+      const entities: AmbientEntity[] = [];
+      const activeEntities: AmbientEntity[] = [];
+      const fractureQueue: FractureRequest[] = [];
+      const queuedForFracture = new Set<number>();
+      const entityLimit = balanced ? 10 : 14;
+      const collisionResult: CollisionResult = { collided: false, impact: 0, nx: 0, ny: 0 };
+      const repelForce: Vector2Like = { x: 0, y: 0 };
+
+      const createEntityGeometry = (kind: SolidKind, radius: number) => {
+        if (kind === "circle") return register(new THREE.CircleGeometry(radius, 16));
+        if (kind === "triangle") return register(new THREE.CircleGeometry(radius, 3));
+        return register(new THREE.BoxGeometry(radius * 1.72, radius * 1.08, 0.045));
+      };
+
+      const createEntity = (
+        kind: SolidKind,
+        level: number,
+        radius: number,
+        x: number,
+        y: number,
+        vx: number,
+        vy: number,
+      ) => {
+        const geometry = createEntityGeometry(kind, radius);
+        const fill = register(new THREE.MeshBasicMaterial({
+          transparent: true,
+          side: THREE.DoubleSide,
+          depthWrite: false,
+        }));
+        const mesh = new THREE.Mesh(geometry, fill);
+        const edgeGeometry = register(new THREE.EdgesGeometry(geometry));
+        const edge = register(new THREE.LineBasicMaterial({ transparent: true, depthWrite: false }));
+        const edges = new THREE.LineSegments(edgeGeometry, edge);
+        const shadowGeometry = register(new THREE.CircleGeometry(radius, 16));
+        const shadow = register(new THREE.MeshBasicMaterial({ color: 0x0b1720, transparent: true, depthWrite: false }));
+        const shadowMesh = new THREE.Mesh(shadowGeometry, shadow);
+        shadowMesh.scale.set(1.2, 0.34, 1);
+        shadowMesh.position.set(0.08, -radius * 0.18, -0.08);
+        const group = new THREE.Group();
+        group.add(shadowMesh, mesh, edges);
+        world.add(group);
+
+        const entity: AmbientEntity = {
+          id: nextEntityId,
+          kind,
+          level,
+          group,
+          fill,
+          edge,
+          shadow,
+          alive: true,
+          hit: 0,
+          fractureCooldown: 1.6 + random() * 1.8,
+          phase: random() * Math.PI * 2,
+          depth: -0.9 - random() * 1.1,
+          x,
+          y,
+          vx,
+          vy,
+          radius,
+          mass: Math.max(0.22, radius * radius * (kind === "rect" ? 1.3 : 1)),
+          angularVelocity: (random() - 0.5) * 0.25,
+        };
+        nextEntityId += 1;
+        entities.push(entity);
+        return entity;
+      };
+
+      const initialEntityCount = balanced ? 6 : 9;
+      const kinds: SolidKind[] = ["rect", "circle", "triangle"];
+      for (let index = 0; index < initialEntityCount; index += 1) {
+        const radius = 0.42 + random() * (balanced ? 0.38 : 0.56);
+        createEntity(
+          kinds[index % kinds.length],
+          index < 3 ? 2 : 1,
+          radius,
+          (random() * 1.72 - 0.86) * viewHalfWidth,
+          (random() * 1.64 - 0.82) * viewHalfHeight,
+          (random() - 0.5) * 0.16,
+          (random() - 0.5) * 0.16,
+        );
+      }
+      host.dataset.entityCount = String(initialEntityCount);
+
+      const creatureGroup = new THREE.Group();
+      const creatureBodyGeometry = register(new THREE.CircleGeometry(0.55, 14));
+      const creatureHeadGeometry = register(new THREE.CircleGeometry(0.24, 10));
+      const creatureBodyMaterial = register(new THREE.MeshBasicMaterial({
         transparent: true,
-        opacity: 0.15,
         side: THREE.DoubleSide,
         depthWrite: false,
       }));
-      const rayMesh = new THREE.Mesh(rayGeometry, rayMaterial);
-      const rayEdgeGeometry = register(new THREE.EdgesGeometry(rayGeometry));
-      const rayEdgeMaterial = register(new THREE.LineBasicMaterial({
-        transparent: true,
-        opacity: 0.72,
-        depthWrite: false,
-      }));
-      const rayEdges = new THREE.LineSegments(rayEdgeGeometry, rayEdgeMaterial);
-      const rayGroup = new THREE.Group();
-      rayGroup.scale.setScalar(balanced ? 0.58 : 0.72);
-      rayGroup.add(rayMesh, rayEdges);
-      world.add(rayGroup);
+      const creatureBody = new THREE.Mesh(creatureBodyGeometry, creatureBodyMaterial);
+      creatureBody.scale.set(1.18, 0.74, 1);
+      const creatureHead = new THREE.Mesh(creatureHeadGeometry, creatureBodyMaterial);
+      creatureHead.position.set(0.56, 0, 0.015);
+      const creatureEdgeMaterial = register(new THREE.LineBasicMaterial({ transparent: true, depthWrite: false }));
+      const creatureBodyEdges = new THREE.LineSegments(register(new THREE.EdgesGeometry(creatureBodyGeometry)), creatureEdgeMaterial);
+      creatureBodyEdges.scale.copy(creatureBody.scale);
+      const creatureHeadEdges = new THREE.LineSegments(register(new THREE.EdgesGeometry(creatureHeadGeometry)), creatureEdgeMaterial);
+      creatureHeadEdges.position.copy(creatureHead.position);
 
-      const trailCount = balanced ? 12 : 20;
-      const trailPoints = Array.from({ length: trailCount }, () => new THREE.Vector3(-2.8, 0.8, -0.4));
-      const trailArray = new Float32Array(trailCount * 3);
-      const trailGeometry = register(new THREE.BufferGeometry());
-      const trailAttribute = new THREE.BufferAttribute(trailArray, 3);
-      trailGeometry.setAttribute("position", trailAttribute);
-      const trailMaterial = register(new THREE.LineBasicMaterial({
-        transparent: true,
-        opacity: 0.34,
-        depthWrite: false,
-      }));
-      const trailLine = new THREE.Line(trailGeometry, trailMaterial);
-      world.add(trailLine);
+      const legArray = new Float32Array(8 * 4 * 3);
+      const legGeometry = register(new THREE.BufferGeometry());
+      const legAttribute = new THREE.BufferAttribute(legArray, 3);
+      legAttribute.setUsage(THREE.DynamicDrawUsage);
+      legGeometry.setAttribute("position", legAttribute);
+      const legMaterial = register(new THREE.LineBasicMaterial({ transparent: true, depthWrite: false }));
+      const creatureLegs = new THREE.LineSegments(legGeometry, legMaterial);
+      creatureLegs.position.z = -0.015;
 
-      const tailPixelCount = balanced ? 5 : 9;
-      const tailPixelGeometry = register(new THREE.BoxGeometry(0.045, 0.045, 0.025));
-      const tailPixelMaterial = register(new THREE.MeshBasicMaterial({
-        transparent: true,
-        opacity: 0.66,
-        depthWrite: false,
-      }));
-      const tailPixels = new THREE.InstancedMesh(tailPixelGeometry, tailPixelMaterial, tailPixelCount);
-      tailPixels.frustumCulled = false;
-      world.add(tailPixels);
+      const footGeometry = register(new THREE.BoxGeometry(0.065, 0.065, 0.025));
+      const footMaterial = register(new THREE.MeshBasicMaterial({ transparent: true, depthWrite: false }));
+      const creatureFeet = new THREE.InstancedMesh(footGeometry, footMaterial, 8);
+      creatureFeet.frustumCulled = false;
+      creatureFeet.position.z = 0.02;
 
-      const rayPosition = new THREE.Vector2(-2.8, 0.8);
-      const rayVelocity = new THREE.Vector2(0.62, 0.14);
-      const force = new THREE.Vector2();
-      const pointerWorld = new THREE.Vector2();
+      const creatureShadowMaterial = register(new THREE.MeshBasicMaterial({ color: 0x0b1720, transparent: true, depthWrite: false }));
+      const creatureShadow = new THREE.Mesh(register(new THREE.CircleGeometry(0.66, 16)), creatureShadowMaterial);
+      creatureShadow.scale.set(1.35, 0.36, 1);
+      creatureShadow.position.set(0.08, -0.14, -0.08);
+
+      creatureGroup.add(creatureShadow, creatureLegs, creatureFeet, creatureBody, creatureBodyEdges, creatureHead, creatureHeadEdges);
+      creatureGroup.scale.setScalar(balanced ? 0.82 : 1);
+      world.add(creatureGroup);
+
+      const creaturePosition = new THREE.Vector2(-2.8, 0.8);
+      const creatureVelocity = new THREE.Vector2(0.58, 0.12);
+      const creatureForce = new THREE.Vector2();
+      const creatureWanderTarget = new THREE.Vector2(2.4, 0.6);
+      const creatureDesired = new THREE.Vector2();
       const obstacleForce = new THREE.Vector2();
+      const pointerWorld = new THREE.Vector2();
+      let creatureWanderTimer = 0;
+      let creatureKickCooldown = 0;
 
       const applyTheme = () => {
         const styles = getComputedStyle(document.documentElement);
-        themeContrast = document.documentElement.dataset.theme === "dark" ? 0.82 : 1.34;
+        lightTheme = document.documentElement.dataset.theme !== "dark";
         palette.accent.set(styles.getPropertyValue("--accent").trim() || "#53a3f2");
-        palette.line.set(styles.getPropertyValue("--line-strong").trim() || "#7890a8");
-        palette.surface.set(styles.getPropertyValue("--surface-strong").trim() || "#cddbeb");
+        palette.accentStrong.set(styles.getPropertyValue("--accent-strong").trim() || "#257bc6");
+        palette.line.set(styles.getPropertyValue("--line-strong").trim() || "#6f8ca3");
+        palette.surface.set(styles.getPropertyValue("--surface-strong").trim() || "#d7e6f2");
+        palette.ink.set(styles.getPropertyValue("--ink").trim() || "#101820");
         particleMaterial.color.copy(palette.accent);
-        tailPixelMaterial.color.copy(palette.accent);
-        trailMaterial.color.copy(palette.accent);
-        rayMaterial.color.copy(palette.accent);
-        rayEdgeMaterial.color.copy(palette.accent);
-        shapes.forEach((shape) => {
-          shape.fill.color.copy(palette.surface);
-          shape.edge.color.copy(palette.line);
+        creatureBodyMaterial.color.copy(lightTheme ? palette.accent : palette.surface);
+        creatureEdgeMaterial.color.copy(lightTheme ? palette.accentStrong : palette.accent);
+        legMaterial.color.copy(lightTheme ? palette.line : palette.accent);
+        footMaterial.color.copy(palette.accentStrong);
+        entities.forEach((entity) => {
+          entity.fill.color.copy(palette.surface);
+          entity.edge.color.copy(lightTheme ? palette.line : palette.accent);
         });
       };
 
@@ -348,34 +416,283 @@ export default function AmbientWorld() {
         );
       };
 
-      const updateShapes = (time: number) => {
-        const seconds = time * 0.001;
-        shapes.forEach((shape, index) => {
-          const baseX = shape.nx * viewHalfWidth;
-          const baseY = shape.ny * viewHalfHeight;
-          const idleX = Math.sin(seconds * (0.11 + index * 0.007) + shape.phase) * shape.amplitudeX;
-          const idleY = Math.cos(seconds * (0.08 + index * 0.006) + shape.phase) * shape.amplitudeY;
-          let pointerX = 0;
-          let pointerY = 0;
-          if (pointer.active) {
-            const dx = baseX - pointerWorld.x;
-            const dy = baseY - pointerWorld.y;
-            const distance = Math.max(0.2, Math.hypot(dx, dy));
-            const response = Math.max(0, 1 - distance / 4.2) * 0.22;
-            pointerX = dx / distance * response;
-            pointerY = dy / distance * response;
-          }
-          shape.group.position.set(
-            baseX + idleX * currentProfile.geometry + pointerX,
-            baseY + idleY * currentProfile.geometry + pointerY,
-            -2.5 - (index % 4) * 1.1,
-          );
-          shape.group.rotation.z = shape.rotation + Math.sin(seconds * 0.07 + shape.phase) * 0.1;
-          const breathe = 1 + Math.sin(seconds * 0.23 + shape.phase) * 0.09;
-          shape.group.scale.setScalar(shape.scale * breathe);
-          shape.edge.opacity = (balanced ? 0.12 : 0.18) * currentProfile.geometry * themeContrast * (0.72 + Math.sin(seconds * 0.31 + shape.phase) * 0.28);
-          shape.fill.opacity = (0.018 + currentProfile.energy * 0.018) * themeContrast;
+      const addSafeZoneForce = (x: number, y: number, target: THREE.Vector2, strength: number) => {
+        const screenX = x / (viewHalfWidth * 2) + 0.5;
+        const screenY = 0.5 - y / (viewHalfHeight * 2);
+        safeZones.forEach((zone) => {
+          const margin = 0.035;
+          if (screenX < zone.left - margin || screenX > zone.right + margin || screenY < zone.top - margin || screenY > zone.bottom + margin) return;
+          const centerX = (zone.left + zone.right) * 0.5;
+          const centerY = (zone.top + zone.bottom) * 0.5;
+          obstacleForce.set(screenX - centerX, -(screenY - centerY));
+          if (obstacleForce.lengthSq() < 0.0001) obstacleForce.set(screenX < 0.5 ? -1 : 1, 0.2);
+          obstacleForce.normalize().multiplyScalar(strength);
+          target.add(obstacleForce);
         });
+      };
+
+      const queueFracture = (entity: AmbientEntity, impact: number) => {
+        if (!entity.alive || entity.fractureCooldown > 0 || queuedForFracture.has(entity.id)) return;
+        if (!canFracture(entity.level, impact, activeEntities.length, entityLimit)) return;
+        queuedForFracture.add(entity.id);
+        fractureQueue.push({ entity, impact });
+      };
+
+      const updateEntityCount = () => {
+        let count = 0;
+        entities.forEach((entity) => {
+          if (entity.alive) count += 1;
+        });
+        host.dataset.entityCount = String(count);
+        return count;
+      };
+
+      const fractureEntity = (request: FractureRequest) => {
+        const parent = request.entity;
+        if (!parent.alive) return;
+        const pattern = fracturePattern(parent.kind, parent.level);
+        const activeCount = updateEntityCount();
+        const available = entityLimit - (activeCount - 1);
+        const pieces = pattern.slice(0, Math.max(0, available));
+        if (pieces.length < 2) return;
+
+        parent.alive = false;
+        world.remove(parent.group);
+        pieces.forEach((piece, index) => {
+          const radius = Math.max(0.16, parent.radius * piece.radiusRatio);
+          const tangent = index % 2 === 0 ? -0.16 : 0.16;
+          const child = createEntity(
+            piece.kind,
+            piece.level,
+            radius,
+            parent.x + piece.direction.x * parent.radius * 0.46,
+            parent.y + piece.direction.y * parent.radius * 0.46,
+            parent.vx + piece.direction.x * (0.62 + request.impact * 0.28) - piece.direction.y * tangent,
+            parent.vy + piece.direction.y * (0.62 + request.impact * 0.28) + piece.direction.x * tangent,
+          );
+          child.angularVelocity += (index - pieces.length * 0.5) * 0.34;
+          child.hit = 1;
+          child.fractureCooldown = 1.8;
+          child.fill.color.copy(palette.surface);
+          child.edge.color.copy(lightTheme ? palette.line : palette.accent);
+        });
+        fractureCount += 1;
+        host.dataset.fractureCount = String(fractureCount);
+        pulseOrigin.set(parent.x, parent.y);
+        pulse = Math.max(pulse, 0.78);
+        updateEntityCount();
+      };
+
+      const updateEntities = (time: number, delta: number) => {
+        const seconds = time * 0.001;
+        activeEntities.length = 0;
+        fractureQueue.length = 0;
+        queuedForFracture.clear();
+
+        entities.forEach((entity) => {
+          if (!entity.alive) return;
+          activeEntities.push(entity);
+          entity.fractureCooldown = Math.max(0, entity.fractureCooldown - delta);
+          entity.hit *= Math.exp(-4.4 * delta);
+
+          if (pointer.active) {
+            pointerRepulsion(entity, pointerWorld, 2.2 + entity.radius, 5.2 + pointer.speed * 12, repelForce);
+            entity.vx += repelForce.x * delta;
+            entity.vy += repelForce.y * delta;
+            if (Math.abs(repelForce.x) + Math.abs(repelForce.y) > 0.18) entity.hit = Math.max(entity.hit, 0.38);
+          }
+
+          if (pulse > 0.01) {
+            const dx = entity.x - pulseOrigin.x;
+            const dy = entity.y - pulseOrigin.y;
+            const distance = Math.max(0.2, Math.hypot(dx, dy));
+            const strength = Math.max(0, 1 - distance / 4.6) * pulse * delta * 2.1;
+            entity.vx += dx / distance * strength;
+            entity.vy += dy / distance * strength;
+          }
+
+          entity.vx += Math.sin(seconds * 0.17 + entity.phase) * 0.035 * delta * currentProfile.entity;
+          entity.vy += Math.cos(seconds * 0.13 + entity.phase) * 0.028 * delta * currentProfile.entity;
+          const zoneForce = creatureForce.set(0, 0);
+          addSafeZoneForce(entity.x, entity.y, zoneForce, 0.72);
+          entity.vx += zoneForce.x * delta;
+          entity.vy += zoneForce.y * delta;
+
+          entity.vx *= Math.exp(-0.34 * delta);
+          entity.vy *= Math.exp(-0.34 * delta);
+          entity.angularVelocity *= Math.exp(-0.22 * delta);
+          entity.x += entity.vx * delta * currentProfile.entity;
+          entity.y += entity.vy * delta * currentProfile.entity;
+          entity.group.rotation.z += entity.angularVelocity * delta;
+
+          const boundaryX = viewHalfWidth - entity.radius * 0.7;
+          const boundaryY = viewHalfHeight - entity.radius * 0.7;
+          if (entity.x < -boundaryX || entity.x > boundaryX) {
+            entity.x = Math.max(-boundaryX, Math.min(boundaryX, entity.x));
+            entity.vx *= -0.78;
+            entity.angularVelocity += entity.vy * 0.08;
+            entity.hit = Math.max(entity.hit, 0.52);
+          }
+          if (entity.y < -boundaryY || entity.y > boundaryY) {
+            entity.y = Math.max(-boundaryY, Math.min(boundaryY, entity.y));
+            entity.vy *= -0.78;
+            entity.angularVelocity -= entity.vx * 0.08;
+            entity.hit = Math.max(entity.hit, 0.52);
+          }
+
+          const breathe = 1 + Math.sin(seconds * 0.48 + entity.phase) * 0.025 + entity.hit * 0.08;
+          entity.group.position.set(entity.x, entity.y, entity.depth);
+          entity.group.scale.setScalar(breathe);
+          entity.fill.color.copy(palette.surface).lerp(palette.accent, entity.hit * 0.42);
+          entity.edge.color.copy(lightTheme ? palette.line : palette.accent).lerp(palette.accentStrong, entity.hit * 0.7);
+          entity.fill.opacity = (lightTheme ? 0.36 : 0.13) + entity.hit * 0.12;
+          entity.edge.opacity = (lightTheme ? 0.72 : 0.58) * currentProfile.entity + entity.hit * 0.18;
+          entity.shadow.opacity = lightTheme ? 0.075 : 0.12;
+        });
+
+        for (let firstIndex = 0; firstIndex < activeEntities.length; firstIndex += 1) {
+          for (let secondIndex = firstIndex + 1; secondIndex < activeEntities.length; secondIndex += 1) {
+            const first = activeEntities[firstIndex];
+            const second = activeEntities[secondIndex];
+            const result = resolveCircleCollision(first, second, 0.74, collisionResult);
+            if (!result.collided) continue;
+            const response = Math.min(1, 0.25 + result.impact * 0.55);
+            first.hit = Math.max(first.hit, response);
+            second.hit = Math.max(second.hit, response);
+            first.angularVelocity -= result.ny * result.impact * 0.15;
+            second.angularVelocity += result.nx * result.impact * 0.15;
+            if (result.impact >= 0.82) queueFracture(first.level >= second.level ? first : second, result.impact);
+          }
+        }
+      };
+
+      const updateCreatureLegs = (time: number, speed: number) => {
+        const seconds = time * 0.001;
+        const gaitSpeed = 3.2 + speed * 5.2;
+        const bodyXs = [-0.34, -0.12, 0.12, 0.34];
+        let offset = 0;
+        let footIndex = 0;
+        for (let sideIndex = 0; sideIndex < 2; sideIndex += 1) {
+          const side = sideIndex === 0 ? -1 : 1;
+          for (let legIndex = 0; legIndex < 4; legIndex += 1) {
+            const phase = seconds * gaitSpeed + legIndex * 1.42 + sideIndex * Math.PI;
+            const hipX = bodyXs[legIndex];
+            const hipY = side * (0.26 + Math.abs(legIndex - 1.5) * 0.025);
+            const jointX = hipX + (legIndex - 1.5) * 0.055 + Math.cos(phase) * 0.035;
+            const jointY = side * (0.54 + Math.sin(phase) * 0.035);
+            const footX = hipX + (legIndex - 1.5) * 0.12 + Math.cos(phase) * (0.08 + speed * 0.045);
+            const footY = side * (0.82 + Math.sin(phase) * (0.05 + speed * 0.025));
+
+            legArray[offset] = hipX;
+            legArray[offset + 1] = hipY;
+            legArray[offset + 2] = 0;
+            legArray[offset + 3] = jointX;
+            legArray[offset + 4] = jointY;
+            legArray[offset + 5] = 0;
+            legArray[offset + 6] = jointX;
+            legArray[offset + 7] = jointY;
+            legArray[offset + 8] = 0;
+            legArray[offset + 9] = footX;
+            legArray[offset + 10] = footY;
+            legArray[offset + 11] = 0;
+            offset += 12;
+
+            sharedMatrix.makeScale(0.72, 0.72, 0.72);
+            sharedMatrix.setPosition(footX, footY, 0.01);
+            creatureFeet.setMatrixAt(footIndex, sharedMatrix);
+            footIndex += 1;
+          }
+        }
+        legAttribute.needsUpdate = true;
+        creatureFeet.instanceMatrix.needsUpdate = true;
+      };
+
+      const updateCreature = (time: number, delta: number) => {
+        const seconds = time * 0.001;
+        creatureWanderTimer -= delta;
+        creatureKickCooldown = Math.max(0, creatureKickCooldown - delta);
+        if (creatureWanderTimer <= 0 || creaturePosition.distanceTo(creatureWanderTarget) < 0.72) {
+          creatureWanderTarget.set(
+            (random() * 1.5 - 0.75) * viewHalfWidth,
+            (random() * 1.45 - 0.725) * viewHalfHeight + currentProfile.creatureBiasY,
+          );
+          creatureWanderTimer = 2.6 + random() * 3.8;
+        }
+
+        creatureForce.set(0, 0);
+        creatureDesired.copy(creatureWanderTarget).sub(creaturePosition);
+        if (creatureDesired.lengthSq() > 0.001) creatureForce.add(creatureDesired.normalize().multiplyScalar(0.48));
+
+        let nearestEntity: AmbientEntity | undefined;
+        let nearestDistance = Number.POSITIVE_INFINITY;
+        activeEntities.forEach((entity) => {
+          if (entity.level <= 0) return;
+          const distance = Math.hypot(entity.x - creaturePosition.x, entity.y - creaturePosition.y);
+          if (distance < nearestDistance) {
+            nearestDistance = distance;
+            nearestEntity = entity;
+          }
+        });
+        if (nearestEntity && nearestDistance < 4.8) {
+          creatureDesired.set(nearestEntity.x - creaturePosition.x, nearestEntity.y - creaturePosition.y);
+          if (creatureDesired.lengthSq() > 0.001) creatureForce.add(creatureDesired.normalize().multiplyScalar(0.2));
+        }
+
+        if (pointer.active) {
+          pointerRepulsion(creaturePosition, pointerWorld, balanced ? 2.8 : 3.4, 7.2 + pointer.speed * 16, repelForce);
+          creatureForce.x += repelForce.x;
+          creatureForce.y += repelForce.y;
+        }
+
+        addSafeZoneForce(creaturePosition.x, creaturePosition.y, creatureForce, 1.9);
+        const boundaryX = viewHalfWidth - 0.72;
+        const boundaryY = viewHalfHeight - 0.7;
+        if (Math.abs(creaturePosition.x) > boundaryX) creatureForce.x += -Math.sign(creaturePosition.x) * 2.4;
+        if (Math.abs(creaturePosition.y) > boundaryY) creatureForce.y += -Math.sign(creaturePosition.y) * 2.4;
+
+        creatureVelocity.addScaledVector(creatureForce, delta);
+        creatureVelocity.multiplyScalar(Math.exp(-0.92 * delta));
+        creatureVelocity.clampLength(0.22, 1.18 * currentProfile.creatureSpeed);
+        creaturePosition.addScaledVector(creatureVelocity, delta);
+
+        activeEntities.forEach((entity) => {
+          const dx = entity.x - creaturePosition.x;
+          const dy = entity.y - creaturePosition.y;
+          const distance = Math.max(0.001, Math.hypot(dx, dy));
+          const kickDistance = entity.radius + 0.72;
+          if (distance >= kickDistance) return;
+          const nx = dx / distance;
+          const ny = dy / distance;
+          const overlap = kickDistance - distance;
+          entity.x += nx * overlap * 0.62;
+          entity.y += ny * overlap * 0.62;
+          creaturePosition.x -= nx * overlap * 0.16;
+          creaturePosition.y -= ny * overlap * 0.16;
+          const kick = 1.1 + creatureVelocity.length() * 0.72;
+          entity.vx += nx * kick / Math.max(0.28, entity.mass);
+          entity.vy += ny * kick / Math.max(0.28, entity.mass);
+          entity.angularVelocity += (nx - ny) * 0.74;
+          entity.hit = 1;
+          creatureVelocity.x -= nx * 0.16;
+          creatureVelocity.y -= ny * 0.16;
+          if (creatureKickCooldown <= 0) {
+            queueFracture(entity, 0.9 + kick * 0.22);
+            creatureKickCooldown = 0.42;
+          }
+        });
+
+        const speed = creatureVelocity.length();
+        creatureGroup.position.set(creaturePosition.x, creaturePosition.y, -0.28);
+        creatureGroup.rotation.z = Math.atan2(creatureVelocity.y, creatureVelocity.x);
+        const bodyPulse = 1 + Math.sin(seconds * 3.2) * 0.025 + Math.min(0.04, speed * 0.025);
+        creatureBody.scale.set(1.18 * bodyPulse, 0.74 / bodyPulse, 1);
+        creatureBodyEdges.scale.copy(creatureBody.scale);
+        creatureBodyMaterial.opacity = lightTheme ? 0.3 : 0.17;
+        creatureEdgeMaterial.opacity = lightTheme ? 0.9 : 0.78;
+        legMaterial.opacity = lightTheme ? 0.78 : 0.7;
+        footMaterial.opacity = lightTheme ? 0.84 : 0.74;
+        creatureShadowMaterial.opacity = lightTheme ? 0.085 : 0.14;
+        updateCreatureLegs(time, speed);
       };
 
       const updateParticles = (time: number, delta: number) => {
@@ -401,99 +718,12 @@ export default function AmbientWorld() {
           if (particle.x > viewHalfWidth + 0.4) particle.x = -viewHalfWidth - 0.4;
           const twinkle = 0.62 + Math.sin(seconds * 1.2 + particle.phase) * 0.38;
           const scale = particle.size * twinkle * (0.72 + currentProfile.particle * 0.28);
-          particleMatrix.makeScale(scale, scale, scale);
-          particleMatrix.setPosition(particle.x, particle.y, particle.z);
-          particleMesh.setMatrixAt(index, particleMatrix);
+          sharedMatrix.makeScale(scale, scale, scale);
+          sharedMatrix.setPosition(particle.x, particle.y, particle.z);
+          particleMesh.setMatrixAt(index, sharedMatrix);
         });
         particleMesh.instanceMatrix.needsUpdate = true;
-        particleMaterial.opacity = (balanced ? 0.34 : 0.5) * themeContrast * (0.7 + currentProfile.particle * 0.3);
-      };
-
-      const updateRay = (time: number, delta: number) => {
-        const seconds = time * 0.001;
-        force.set(
-          Math.cos(seconds * 0.29) * 0.34 + Math.sin(seconds * 0.13) * 0.22,
-          Math.sin(seconds * 0.23) * 0.3 + targetProfile.rayBiasY * 0.38,
-        );
-
-        if (pointer.active) {
-          const dx = pointerWorld.x - rayPosition.x;
-          const dy = pointerWorld.y - rayPosition.y;
-          const distance = Math.max(0.15, Math.hypot(dx, dy));
-          const fastPointer = pointer.speed > 0.85;
-          const range = fastPointer ? 3.4 : 4.8;
-          const strength = Math.max(0, 1 - distance / range);
-          if (fastPointer) {
-            force.x -= dx / distance * strength * 2.8;
-            force.y -= dy / distance * strength * 2.8;
-          } else {
-            force.x += dx / distance * strength * 0.82 - dy / distance * strength * 0.28;
-            force.y += dy / distance * strength * 0.82 + dx / distance * strength * 0.28;
-          }
-        }
-
-        const screenX = rayPosition.x / (viewHalfWidth * 2) + 0.5;
-        const screenY = 0.5 - rayPosition.y / (viewHalfHeight * 2);
-        safeZones.forEach((zone) => {
-          const margin = 0.035;
-          if (screenX < zone.left - margin || screenX > zone.right + margin || screenY < zone.top - margin || screenY > zone.bottom + margin) return;
-          const centerX = (zone.left + zone.right) * 0.5;
-          const centerY = (zone.top + zone.bottom) * 0.5;
-          obstacleForce.set(screenX - centerX, -(screenY - centerY));
-          if (obstacleForce.lengthSq() < 0.0001) obstacleForce.set(screenX < 0.5 ? -1 : 1, 0.2);
-          obstacleForce.normalize().multiplyScalar(1.8);
-          force.add(obstacleForce);
-        });
-
-        shapes.forEach((shape) => {
-          const dx = rayPosition.x - shape.group.position.x;
-          const dy = rayPosition.y - shape.group.position.y;
-          const distance = Math.max(0.15, Math.hypot(dx, dy));
-          if (distance < 1.35) {
-            const strength = (1 - distance / 1.35) * 1.6;
-            force.x += dx / distance * strength;
-            force.y += dy / distance * strength;
-            shape.group.rotation.z += strength * delta * 0.3;
-          }
-        });
-
-        const boundaryX = viewHalfWidth - 0.65;
-        const boundaryY = viewHalfHeight - 0.55;
-        if (Math.abs(rayPosition.x) > boundaryX) force.x += -Math.sign(rayPosition.x) * 2.2;
-        if (Math.abs(rayPosition.y) > boundaryY) force.y += -Math.sign(rayPosition.y) * 2.2;
-
-        rayVelocity.addScaledVector(force, delta);
-        rayVelocity.multiplyScalar(Math.exp(-1.05 * delta));
-        rayVelocity.clampLength(0.38, 1.25 * currentProfile.raySpeed);
-        rayPosition.addScaledVector(rayVelocity, delta);
-        rayGroup.position.set(rayPosition.x, rayPosition.y, -0.35);
-        rayGroup.rotation.z = Math.atan2(rayVelocity.y, rayVelocity.x);
-        const wingPulse = 1 + Math.sin(seconds * 4.1) * 0.09;
-        rayMesh.scale.y = wingPulse;
-        rayEdges.scale.y = wingPulse;
-        rayMaterial.opacity = (balanced ? 0.1 : 0.14) * themeContrast * currentProfile.energy;
-        rayEdgeMaterial.opacity = (balanced ? 0.48 : 0.68) * themeContrast * currentProfile.energy;
-
-        trailPoints[0].set(rayPosition.x - rayVelocity.x * 0.32, rayPosition.y - rayVelocity.y * 0.32, -0.42);
-        for (let index = 1; index < trailPoints.length; index += 1) {
-          trailPoints[index].lerp(trailPoints[index - 1], Math.min(1, delta * (7.8 - index * 0.12)));
-        }
-        trailPoints.forEach((point, index) => {
-          trailArray[index * 3] = point.x;
-          trailArray[index * 3 + 1] = point.y;
-          trailArray[index * 3 + 2] = point.z;
-        });
-        trailAttribute.needsUpdate = true;
-        trailMaterial.opacity = (balanced ? 0.2 : 0.32) * themeContrast * currentProfile.energy;
-
-        for (let index = 0; index < tailPixelCount; index += 1) {
-          const point = trailPoints[Math.min(trailPoints.length - 1, 2 + index * 2)];
-          const scale = Math.max(0.26, 0.82 - index * 0.07) * (0.75 + Math.sin(seconds * 2.1 + index) * 0.25);
-          particleMatrix.makeScale(scale, scale, scale);
-          particleMatrix.setPosition(point.x, point.y, point.z - 0.02);
-          tailPixels.setMatrixAt(index, particleMatrix);
-        }
-        tailPixels.instanceMatrix.needsUpdate = true;
+        particleMaterial.opacity = (balanced ? 0.28 : 0.4) * (0.72 + currentProfile.particle * 0.28);
       };
 
       const render = (time: number) => {
@@ -502,18 +732,22 @@ export default function AmbientWorld() {
         lastTime = time;
         const profileEase = Math.min(1, delta * 0.72);
         currentProfile.energy = lerp(currentProfile.energy, targetProfile.energy, profileEase);
-        currentProfile.geometry = lerp(currentProfile.geometry, targetProfile.geometry, profileEase);
+        currentProfile.entity = lerp(currentProfile.entity, targetProfile.entity, profileEase);
         currentProfile.particle = lerp(currentProfile.particle, targetProfile.particle, profileEase);
-        currentProfile.raySpeed = lerp(currentProfile.raySpeed, targetProfile.raySpeed, profileEase);
-        currentProfile.rayBiasY = lerp(currentProfile.rayBiasY, targetProfile.rayBiasY, profileEase);
+        currentProfile.creatureSpeed = lerp(currentProfile.creatureSpeed, targetProfile.creatureSpeed, profileEase);
+        currentProfile.creatureBiasY = lerp(currentProfile.creatureBiasY, targetProfile.creatureBiasY, profileEase);
         pointer.speed *= Math.exp(-3.2 * delta);
         pulse *= Math.exp(-2.8 * delta);
         updatePointerWorld();
-        updateShapes(time);
+        updateEntities(time, delta);
+        updateCreature(time, delta);
+        fractureQueue.forEach(fractureEntity);
         updateParticles(time, delta);
-        updateRay(time, delta);
         renderer.render(scene, camera);
-        host.dataset.status = "ready";
+        if (!hasRendered) {
+          host.dataset.status = "ready";
+          hasRendered = true;
+        }
         frame = window.requestAnimationFrame(render);
       };
 
@@ -526,9 +760,15 @@ export default function AmbientWorld() {
 
       const handlePointerMove = (event: PointerEvent) => {
         const now = performance.now();
-        const elapsed = Math.max(8, now - pointer.updatedAt);
-        const distance = Math.hypot(event.clientX - pointer.previousX, event.clientY - pointer.previousY);
-        pointer.speed = Math.min(2.4, distance / elapsed);
+        if (!pointer.active) {
+          pointer.previousX = event.clientX;
+          pointer.previousY = event.clientY;
+          pointer.speed = 0;
+        } else {
+          const elapsed = Math.max(8, now - pointer.updatedAt);
+          const distance = Math.hypot(event.clientX - pointer.previousX, event.clientY - pointer.previousY);
+          pointer.speed = Math.min(2.4, distance / elapsed);
+        }
         pointer.active = event.pointerType !== "touch";
         pointer.x = event.clientX;
         pointer.y = event.clientY;
@@ -547,7 +787,7 @@ export default function AmbientWorld() {
         pointer.y = event.clientY;
         updatePointerWorld();
         pulseOrigin.copy(pointerWorld);
-        pulse = Math.max(pulse, 0.48);
+        pulse = Math.max(pulse, 0.54);
       };
 
       const handleSectionPresence = (event: Event) => {
@@ -561,8 +801,8 @@ export default function AmbientWorld() {
         const direction = (event as CustomEvent<{ direction?: number }>).detail?.direction || 1;
         pulseOrigin.set(viewHalfWidth * 0.26, -0.1);
         pulse = 1;
-        rayVelocity.x += direction * 0.42;
-        rayVelocity.y += 0.28;
+        creatureVelocity.x += direction * 0.34;
+        creatureVelocity.y += 0.22;
       };
 
       const handleVisibility = () => {
@@ -610,14 +850,27 @@ export default function AmbientWorld() {
   }, []);
 
   return (
-    <div ref={hostRef} className="ambient-world" data-status="loading" data-backend="static" data-quality="static" aria-hidden="true">
+    <div
+      ref={hostRef}
+      className="ambient-world"
+      data-status="loading"
+      data-backend="static"
+      data-quality="static"
+      data-creature="arthropod"
+      data-pointer-force="repel"
+      data-entity-count="0"
+      data-fracture-count="0"
+      aria-hidden="true"
+    >
       <canvas />
       <div className="ambient-static-fallback">
         <span className="ambient-static-grid"></span>
         <span className="ambient-static-shape ambient-static-shape-one"></span>
         <span className="ambient-static-shape ambient-static-shape-two"></span>
         <span className="ambient-static-shape ambient-static-shape-three"></span>
-        <span className="ambient-static-ray"></span>
+        <span className="ambient-static-creature">
+          {Array.from({ length: 8 }, (_, index) => <i key={index}></i>)}
+        </span>
         <span className="ambient-static-pixel ambient-static-pixel-one"></span>
         <span className="ambient-static-pixel ambient-static-pixel-two"></span>
         <span className="ambient-static-pixel ambient-static-pixel-three"></span>
