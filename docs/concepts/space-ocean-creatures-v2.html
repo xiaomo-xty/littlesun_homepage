@@ -1,0 +1,360 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Drift Companions - Creature Concept 02</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font-family: "Segoe UI", "Noto Sans SC", sans-serif;
+        background: #071722;
+        color: #edf8fc;
+      }
+
+      * { box-sizing: border-box; }
+
+      body {
+        min-width: 320px;
+        margin: 0;
+        background:
+          linear-gradient(90deg, rgb(105 181 219 / 0.032) 1px, transparent 1px),
+          linear-gradient(rgb(105 181 219 / 0.032) 1px, transparent 1px),
+          #071722;
+        background-size: 48px 48px;
+      }
+
+      main {
+        width: min(100%, 1440px);
+        min-height: 900px;
+        margin: 0 auto;
+        padding: 34px 46px 40px;
+      }
+
+      header {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        align-items: end;
+        padding-bottom: 24px;
+        border-bottom: 1px solid #294758;
+      }
+
+      .mono {
+        font-family: Consolas, "SFMono-Regular", monospace;
+        text-transform: uppercase;
+      }
+
+      .eyebrow {
+        margin: 0 0 8px;
+        color: #79c5e7;
+        font: 12px/1 Consolas, monospace;
+        text-transform: uppercase;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: clamp(36px, 4vw, 62px);
+        font-weight: 650;
+        line-height: 0.95;
+      }
+
+      .index {
+        color: #79c5e7;
+        font: 12px/1 Consolas, monospace;
+        text-transform: uppercase;
+      }
+
+      .layout {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 278px;
+        gap: 30px;
+        margin-top: 28px;
+      }
+
+      .stage {
+        position: relative;
+        min-height: 548px;
+        overflow: hidden;
+        border: 1px solid #294758;
+        background: #0a1d29;
+      }
+
+      .stage::before {
+        position: absolute;
+        inset: 0;
+        background:
+          radial-gradient(circle at 55% 46%, rgb(60 150 198 / 0.13), transparent 46%),
+          linear-gradient(180deg, transparent 74%, rgb(2 12 19 / 0.42));
+        content: "";
+      }
+
+      .stage > svg {
+        position: absolute;
+        inset: 20px 16px 22px;
+        width: calc(100% - 32px);
+        height: calc(100% - 42px);
+      }
+
+      .stage-footer {
+        position: absolute;
+        right: 18px;
+        bottom: 14px;
+        display: flex;
+        gap: 18px;
+        color: #7696a8;
+        font: 10px/1 Consolas, monospace;
+      }
+
+      aside {
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+      }
+
+      .summary {
+        margin: 0;
+        color: #b7ceda;
+        font-size: 16px;
+        line-height: 1.68;
+      }
+
+      .roles {
+        margin-top: 26px;
+        border-top: 1px solid #294758;
+      }
+
+      .role {
+        padding: 16px 0;
+        border-bottom: 1px solid #1c3645;
+      }
+
+      .role strong {
+        display: block;
+        margin-bottom: 7px;
+        color: #ef8378;
+        font: 11px/1 Consolas, monospace;
+        text-transform: uppercase;
+      }
+
+      .role span {
+        color: #c9dce5;
+        font-size: 13px;
+        line-height: 1.5;
+      }
+
+      .palette { padding-top: 24px; }
+
+      .label {
+        margin-bottom: 12px;
+        color: #7696a8;
+        font: 10px/1 Consolas, monospace;
+        text-transform: uppercase;
+      }
+
+      .swatches {
+        display: grid;
+        grid-template-columns: repeat(5, 1fr);
+        height: 34px;
+      }
+
+      .swatches i:nth-child(1) { background: #0c2635; }
+      .swatches i:nth-child(2) { background: #245f7e; }
+      .swatches i:nth-child(3) { background: #3b91ba; }
+      .swatches i:nth-child(4) { background: #91d8eb; }
+      .swatches i:nth-child(5) { background: #ef8378; }
+
+      .motion {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 28px;
+        margin-top: 28px;
+        padding-top: 26px;
+        border-top: 1px solid #294758;
+      }
+
+      .motion-item {
+        display: grid;
+        grid-template-columns: 152px minmax(0, 1fr);
+        gap: 24px;
+        align-items: center;
+        min-height: 132px;
+      }
+
+      .motion-item + .motion-item {
+        padding-left: 28px;
+        border-left: 1px solid #294758;
+      }
+
+      .motion h2 {
+        margin: 0 0 8px;
+        font-size: 17px;
+        font-weight: 600;
+      }
+
+      .motion p {
+        margin: 0;
+        color: #829ead;
+        font-size: 12px;
+        line-height: 1.55;
+      }
+
+      .motion svg { width: 100%; height: 112px; }
+
+      @media (max-width: 850px) {
+        main { min-height: auto; padding: 24px 18px 34px; }
+        .layout { grid-template-columns: 1fr; }
+        .stage { min-height: 430px; }
+        aside { gap: 28px; }
+        .motion { grid-template-columns: 1fr; }
+        .motion-item + .motion-item { padding: 20px 0 0; border-top: 1px solid #294758; border-left: 0; }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <div>
+          <p class="eyebrow">Space ocean / simple creature set</p>
+          <h1>Drift Companions</h1>
+        </div>
+        <span class="index">Concept 02 / dolphin + moon jelly</span>
+      </header>
+
+      <section class="layout">
+        <div class="stage">
+          <svg viewBox="0 0 960 520" role="img" aria-label="A friendly small dolphin with simple moon jelly companions">
+            <g fill="none" stroke="#24495d" stroke-width="1" opacity="0.76">
+              <path d="M 18 105 C 172 54 305 116 460 81 C 622 45 775 91 944 48" />
+              <path d="M 12 421 C 174 384 328 443 485 397 C 638 352 793 411 948 371" />
+            </g>
+
+            <g fill="#3b91ba" opacity="0.64">
+              <rect x="61" y="280" width="6" height="6" />
+              <rect x="116" y="431" width="4" height="4" />
+              <rect x="277" y="93" width="7" height="7" />
+              <rect x="793" y="111" width="5" height="5" />
+              <rect x="880" y="310" width="9" height="9" />
+              <rect x="738" y="458" width="4" height="4" />
+            </g>
+
+            <g id="dolphin">
+              <path
+                d="M 272 247 C 225 216 174 194 119 200 C 161 225 184 247 204 266 C 172 286 145 315 124 350 C 180 341 229 318 273 287 C 253 277 249 260 272 247 Z"
+                fill="#245f7e"
+                stroke="#78c6e4"
+                stroke-width="3"
+              />
+              <path
+                d="M 250 252 C 327 205 430 181 540 187 C 610 190 661 207 687 226 C 701 236 708 245 708 251 C 725 249 742 251 759 256 C 744 263 727 265 709 261 C 691 302 623 334 533 341 C 433 347 344 322 267 288 C 245 278 240 264 250 252 Z"
+                fill="#286e91"
+                stroke="#91d8eb"
+                stroke-width="4"
+              />
+              <path
+                d="M 468 196 C 480 160 509 136 542 124 C 532 154 538 178 553 192 C 525 189 496 190 468 196 Z"
+                fill="#205a78"
+                stroke="#6bbad9"
+                stroke-width="3"
+              />
+              <path
+                d="M 590 323 C 582 363 552 396 513 410 C 531 378 538 349 539 336 C 557 333 574 329 590 323 Z"
+                fill="#3489ae"
+                stroke="#91d8eb"
+                stroke-width="3"
+              />
+              <path d="M 307 294 C 414 332 557 342 663 297" fill="none" stroke="#b8eaf5" stroke-width="2" opacity="0.32" />
+              <path d="M 708 261 C 721 267 735 266 746 262" fill="none" stroke="#0c2635" stroke-width="3" stroke-linecap="round" />
+              <ellipse cx="623" cy="205" rx="7" ry="2.4" fill="#0c2635" opacity="0.72" />
+              <circle cx="683" cy="236" r="9" fill="#081721" stroke="#b8eaf5" stroke-width="3" />
+              <circle cx="686" cy="233" r="3.5" fill="#ef8378" />
+              <g fill="#91d8eb" opacity="0.6">
+                <rect x="568" y="258" width="6" height="6" />
+                <rect x="530" y="275" width="4" height="4" />
+                <rect x="487" y="250" width="4" height="4" />
+                <rect x="445" y="285" width="7" height="7" />
+              </g>
+            </g>
+
+            <g id="jelly-one" transform="translate(62 73)">
+              <path d="M 19 68 C 20 27 53 6 88 7 C 125 8 155 34 154 70 C 126 84 47 84 19 68 Z" fill="#2e7898" stroke="#91d8eb" stroke-width="3" />
+              <path d="M 28 68 C 50 51 66 78 86 65 C 105 52 118 77 146 68" fill="none" stroke="#b8eaf5" stroke-width="2" opacity="0.62" />
+              <g fill="none" stroke="#67b5d2" stroke-width="3" stroke-linecap="round">
+                <path d="M 45 75 C 30 104 54 111 40 140" />
+                <path d="M 75 78 C 64 104 88 119 72 151" />
+                <path d="M 106 77 C 92 105 119 113 105 142" />
+                <path d="M 133 74 C 121 97 142 108 130 132" />
+              </g>
+              <path d="M 73 43 C 80 36 91 36 99 43 C 92 51 81 51 73 43 Z" fill="#8fd8e9" opacity="0.42" />
+            </g>
+
+            <g id="jelly-two" transform="translate(777 348) scale(.68)">
+              <path d="M 19 68 C 20 27 53 6 88 7 C 125 8 155 34 154 70 C 126 84 47 84 19 68 Z" fill="#2e7898" stroke="#91d8eb" stroke-width="3" />
+              <path d="M 28 68 C 50 51 66 78 86 65 C 105 52 118 77 146 68" fill="none" stroke="#b8eaf5" stroke-width="2" opacity="0.62" />
+              <g fill="none" stroke="#67b5d2" stroke-width="3" stroke-linecap="round">
+                <path d="M 45 75 C 30 104 54 111 40 140" /><path d="M 75 78 C 64 104 88 119 72 151" />
+                <path d="M 106 77 C 92 105 119 113 105 142" /><path d="M 133 74 C 121 97 142 108 130 132" />
+              </g>
+              <path d="M 73 43 C 80 36 91 36 99 43 C 92 51 81 51 73 43 Z" fill="#8fd8e9" opacity="0.42" />
+            </g>
+
+            <g font-family="Consolas, monospace" font-size="11" fill="#7799ab">
+              <path d="M 690 218 L 770 155 L 842 155" fill="none" stroke="#426a80" />
+              <text x="850" y="159">SMALL SIDE EYE</text>
+              <path d="M 538 397 L 640 455 L 732 455" fill="none" stroke="#426a80" />
+              <text x="740" y="459">SOFT FLIPPER</text>
+              <path d="M 173 140 L 236 117 L 306 117" fill="none" stroke="#426a80" />
+              <text x="314" y="121">MOON JELLY</text>
+            </g>
+          </svg>
+          <div class="stage-footer"><span>RECOGNIZABLE ANATOMY</span><span>SOFT CURVES</span><span>PIXEL PLANKTON</span></div>
+        </div>
+
+        <aside>
+          <div>
+            <p class="summary">A familiar dolphin carries the scene. Small moon jellies provide soft secondary motion without adding another complex animal rig.</p>
+            <div class="roles">
+              <div class="role"><strong>Lead / dolphin</strong><span>Calm cruising, occasional turn, cursor avoidance. Slightly compact proportions, not a toy mascot.</span></div>
+              <div class="role"><strong>Secondary / jelly</strong><span>Slow drift, bell breathing, tentacle lag. No face and no direct cursor chase.</span></div>
+              <div class="role"><strong>Field / pixels</strong><span>Bright square plankton remain visible around both themes and react to wake or clicks.</span></div>
+            </div>
+          </div>
+          <div class="palette">
+            <div class="label">Core palette</div>
+            <div class="swatches"><i></i><i></i><i></i><i></i><i></i></div>
+          </div>
+        </aside>
+      </section>
+
+      <section class="motion">
+        <div class="motion-item">
+          <div>
+            <div class="label">Motion rig A</div>
+            <h2>Dolphin: 7 points</h2>
+            <p>Front body stays stable. Only the last three points create the swimming wave.</p>
+          </div>
+          <svg viewBox="0 0 470 120" aria-label="Simplified dolphin seven point animation rig">
+            <path d="M 42 58 C 128 33 220 45 304 55 C 354 61 391 75 429 68" fill="none" stroke="#284b5e" stroke-width="32" stroke-linecap="round" opacity="0.42" />
+            <path d="M 42 58 C 128 33 220 45 304 55 C 354 61 391 75 429 68" fill="none" stroke="#82cee8" stroke-width="2" />
+            <g fill="#071722" stroke="#91d8eb" stroke-width="3"><circle cx="42" cy="58" r="7" /><circle cx="106" cy="43" r="6" /><circle cx="171" cy="41" r="6" /><circle cx="236" cy="47" r="6" /><circle cx="301" cy="55" r="6" /><circle cx="365" cy="70" r="6" /><circle cx="429" cy="68" r="6" /></g>
+            <path d="M 354 94 C 383 106 414 103 439 86" fill="none" stroke="#ef8378" stroke-width="2" stroke-linecap="round" />
+            <text x="337" y="116" fill="#7799ab" font-family="Consolas" font-size="10">TAIL WAVE ONLY</text>
+          </svg>
+        </div>
+
+        <div class="motion-item">
+          <div>
+            <div class="label">Motion rig B</div>
+            <h2>Jelly: 1 spring</h2>
+            <p>One squash value drives the bell. Four light chains trail behind it.</p>
+          </div>
+          <svg viewBox="0 0 470 120" aria-label="Simplified moon jelly animation rig">
+            <path d="M 105 65 C 108 24 145 8 181 13 C 214 18 236 38 236 68 C 203 81 139 82 105 65 Z" fill="#2b7899" stroke="#91d8eb" stroke-width="3" />
+            <g fill="none" stroke="#69b8d5" stroke-width="3" stroke-linecap="round"><path d="M 128 72 C 112 91 137 98 124 116" /><path d="M 158 76 C 146 96 171 102 159 120" /><path d="M 188 75 C 176 95 202 101 190 119" /><path d="M 217 72 C 204 91 226 96 218 113" /></g>
+            <path d="M 277 31 L 277 91 M 267 42 L 277 31 L 287 42 M 267 80 L 277 91 L 287 80" fill="none" stroke="#ef8378" stroke-width="2" />
+            <text x="298" y="65" fill="#7799ab" font-family="Consolas" font-size="10">SQUASH / RELEASE</text>
+          </svg>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>
