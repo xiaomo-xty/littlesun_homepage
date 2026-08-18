@@ -6,11 +6,13 @@
   "packageManager": "bun@1.3.14",
   "scripts": {
     "dev": "astro dev",
+    "test": "bun test",
     "check": "astro check",
     "build": "astro build",
     "preview": "astro preview"
   },
   "devDependencies": {
+    "@types/bun": "^1.3.14",
     "@types/react": "19.1.10",
     "@types/react-dom": "19.1.7",
     "@types/three": "0.179.0",

@@ -5,7 +5,6 @@ import {
   InfoIcon,
 } from "@phosphor-icons/react";
 import {
-  AnimatePresence,
   motion,
   type PanInfo,
   useAnimate,
@@ -452,29 +451,11 @@ export default function ProjectDeck() {
             ))}
           </div>
 
-          <aside className="project-sideboard" aria-live="polite">
-            <AnimatePresence mode="wait" initial={false}>
-              <motion.div
-                key={sideboardProject.id}
-                className="sideboard-content"
-                initial={reduceMotion ? false : { opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={reduceMotion ? undefined : { opacity: 0, y: -6 }}
-                transition={{ duration: reduceMotion ? 0.01 : 0.32, delay: transition ? 0.16 : 0, ease: drawEase }}
-              >
-                <header>
-                  <span className="pixel-type">CURRENT CARD</span>
-                  <span className="pixel-type">{String(displayPosition + 1).padStart(2, "0")} / {String(displayTotal).padStart(2, "0")}</span>
-                </header>
-                <h3>{sideboardProject.title} 的证据面板</h3>
-                <div className="sideboard-story">
-                  <section><strong className="pixel-type">PROBLEM</strong><p>{sideboardProject.problem}</p></section>
-                  <section><strong className="pixel-type">PROCESS</strong><p>{sideboardProject.process}</p></section>
-                  <section><strong className="pixel-type">EVIDENCE</strong><p>{sideboardProject.evidence}</p></section>
-                </div>
-              </motion.div>
-            </AnimatePresence>
-
+          <aside className="project-sideboard" aria-label="牌组索引">
+            <header className="sideboard-heading">
+              <span className="pixel-type">DECK INDEX</span>
+              <span className="pixel-type">{String(displayPosition + 1).padStart(2, "0")} / {String(displayTotal).padStart(2, "0")}</span>
+            </header>
             <div className="deck-rail" aria-label="当前牌组">
               {deckProjects.map((project, index) => (
                 <button
@@ -485,8 +466,11 @@ export default function ProjectDeck() {
                   disabled={busy || transition?.nextFilter !== undefined}
                   aria-label={`抽取${project.title}`}
                 >
-                  <span aria-hidden="true"></span>
-                  <small className="pixel-type">{project.title}</small>
+                  <span className="rail-marker" aria-hidden="true"></span>
+                  <span className="rail-copy">
+                    <small className="pixel-type">{String(index + 1).padStart(2, "0")} / {project.kind}</small>
+                    <strong>{project.title}</strong>
+                  </span>
                 </button>
               ))}
             </div>
