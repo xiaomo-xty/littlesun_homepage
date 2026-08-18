@@ -203,3 +203,69 @@
 ### 结论
 
 `v0.3.0` 满足当前概念原型的交互、响应式、降级和构建门槛，可合并至 `develop`；真实媒体与外链仍应在独立内容分支补充。
+
+## v0.4.0 涌现式背景与界面减法
+
+验收日期：2026-08-18
+
+验收地址：`http://127.0.0.1:4326/`
+
+### 自动检查
+
+| 检查项 | 结果 |
+| --- | --- |
+| `bun run test` | 通过：5 passed、0 failed |
+| `bun run check` | 通过：0 errors、0 warnings、0 hints |
+| `bun run build` | 通过：静态生产构建成功 |
+| `git diff --check` | 通过 |
+| 干净浏览器控制台 | 通过：无 warning 或 error |
+
+### 视口与背景后端
+
+| 场景 | 运行状态 | 结果 |
+| --- | --- | --- |
+| 桌面 1440 x 1000 / 浅色 | `webgpu / full / ready` | 通过：无水平溢出，实体清晰可见 |
+| 桌面 1440 x 1000 / 深色 | `webgpu / full / ready` | 通过：层次与正文对比清晰 |
+| 移动 390 x 844 / 浅色 | `webgpu / balanced / ready` | 通过：无水平溢出，菜单与首屏完整 |
+| `?ambient=webgl2` | `webgl2 / balanced / ready` | 通过：实际使用轻量资源预算 |
+| `?ambient=static` | `static / static / ready` | 通过：Canvas 隐藏，CSS 兜底可见 |
+
+- 桌面空闲观察期间，实体数量从 9 增长至上限 14，`data-fracture-count` 从 0 增长至 2。
+- 背景对象声明为 `data-creature="arthropod"` 与 `data-pointer-force="repel"`。
+- 单元测试确认指针力始终背离鼠标，实体碰撞交换动量，三类几何按有界规则破碎。
+- 浅色页面基底为 `#f7f8f6`，普通内容表面为 `#ffffff`。
+
+### 界面与卡牌
+
+| 检查项 | 结果 |
+| --- | --- |
+| 技术关键词横条 | 通过：DOM 节点数为 0 |
+| 重复证据侧板 | 通过：`.sideboard-story` 节点数为 0 |
+| 卡面证据正文 | 通过：`.evidence-list` 节点数为 1 |
+| 桌面牌组索引 | 通过：4 张牌均可直接抽取 |
+| 重复进入项目区 | 通过：发牌周期从 1 增长至 2 |
+| 单次切牌 | 通过：约 0.9 秒，旧牌回背与新牌翻正可见 |
+| 移动项目卡 | 通过：四张卡横向、纵向内部溢出均为 0 |
+| 移动全屏菜单 | 通过：打开后锁定页面，Escape 可关闭 |
+
+### ICP 与内容边界
+
+- 页尾显示 `湘ICP备2026030115号-1`，链接目标为 `https://beian.miit.gov.cn/`。
+- MIT License 保持在仓库根目录。
+- 姓名、人像、简历、GitHub、邮箱、项目截图和文章链接继续使用明确占位符。
+- 未修改 `D:\project\blog`。
+
+### 验收截图
+
+本轮截图保存在被 `.gitignore` 排除的 `artifacts/`：
+
+- `homepage-v0.4-desktop-light.png`
+- `homepage-v0.4-desktop-dark.png`
+- `homepage-v0.4-desktop-deck.png`
+- `homepage-v0.4-mobile-hero.png`
+- `homepage-v0.4-mobile-menu.png`
+- `homepage-v0.4-mobile-deck.png`
+
+### 结论
+
+`v0.4.0` 满足当前背景生态、界面减法、深浅主题、响应式、降级、交互与构建门槛，可以合回 `develop`。`main` 继续保持未发布状态，等待用户决定正式发布。
