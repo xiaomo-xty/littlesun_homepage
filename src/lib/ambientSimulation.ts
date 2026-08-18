@@ -24,6 +24,22 @@ export type FracturePiece = {
   direction: Vector2Like;
 };
 
+export type BoidState = Vector2Like & {
+  vx: number;
+  vy: number;
+};
+
+export type SchoolingOptions = {
+  neighborRadius: number;
+  separationRadius: number;
+  separationWeight: number;
+  alignmentWeight: number;
+  cohesionWeight: number;
+  maxForce: number;
+};
+
+export type RibbonPoint = BoidState;
+
 export function pointerRepulsion(
   position: Vector2Like,
   pointer: Vector2Like,
@@ -138,4 +154,114 @@ export function fracturePattern(kind: SolidKind, level: number): FracturePiece[]
 
 export function canFracture(level: number, impact: number, entityCount: number, entityLimit: number) {
   return level > 0 && impact >= 0.82 && entityCount < entityLimit;
+}
+
+export function sampleOceanFlow(
+  position: Vector2Like,
+  time: number,
+  output: Vector2Like = { x: 0, y: 0 },
+): Vector2Like {
+  const xPhase = position.x * 0.42 + time * 0.11;
+  const yPhase = position.y * 0.5 - time * 0.08;
+  const crossPhase = (position.x + position.y) * 0.23 + time * 0.045;
+
+  // Curl of a small analytic stream function. The field stays smooth and divergence-light.
+  output.x = -0.5 * Math.sin(yPhase) + 0.1035 * Math.cos(crossPhase);
+  output.y = -0.42 * Math.cos(xPhase) - 0.1035 * Math.cos(crossPhase);
+  const length = Math.hypot(output.x, output.y);
+  if (length > 1) {
+    output.x /= length;
+    output.y /= length;
+  }
+  return output;
+}
+
+export function schoolingSteer(
+  subject: BoidState,
+  neighbors: readonly BoidState[],
+  options: SchoolingOptions,
+  output: Vector2Like = { x: 0, y: 0 },
+): Vector2Like {
+  let separationX = 0;
+  let separationY = 0;
+  let alignmentX = 0;
+  let alignmentY = 0;
+  let cohesionX = 0;
+  let cohesionY = 0;
+  let neighborCount = 0;
+  let separationCount = 0;
+
+  neighbors.forEach((neighbor) => {
+    if (neighbor === subject) return;
+    const dx = neighbor.x - subject.x;
+    const dy = neighbor.y - subject.y;
+    const distance = Math.hypot(dx, dy);
+    if (distance <= 0.0001 || distance > options.neighborRadius) return;
+
+    neighborCount += 1;
+    alignmentX += neighbor.vx;
+    alignmentY += neighbor.vy;
+    cohesionX += neighbor.x;
+    cohesionY += neighbor.y;
+
+    if (distance < options.separationRadius) {
+      const inverseDistance = 1 / Math.max(0.001, distance * distance);
+      separationX -= dx * inverseDistance;
+      separationY -= dy * inverseDistance;
+      separationCount += 1;
+    }
+  });
+
+  output.x = 0;
+  output.y = 0;
+  if (separationCount > 0) {
+    output.x += separationX / separationCount * options.separationWeight;
+    output.y += separationY / separationCount * options.separationWeight;
+  }
+  if (neighborCount > 0) {
+    output.x += (alignmentX / neighborCount - subject.vx) * options.alignmentWeight;
+    output.y += (alignmentY / neighborCount - subject.vy) * options.alignmentWeight;
+    output.x += (cohesionX / neighborCount - subject.x) * options.cohesionWeight;
+    output.y += (cohesionY / neighborCount - subject.y) * options.cohesionWeight;
+  }
+
+  const force = Math.hypot(output.x, output.y);
+  if (force > options.maxForce && force > 0) {
+    output.x = output.x / force * options.maxForce;
+    output.y = output.y / force * options.maxForce;
+  }
+  return output;
+}
+
+export function advanceRibbonChain(
+  points: RibbonPoint[],
+  head: Vector2Like,
+  delta: number,
+  segmentLength: number,
+  stiffness = 18,
+  damping = 5.4,
+) {
+  if (points.length === 0) return points;
+  points[0].x = head.x;
+  points[0].y = head.y;
+  points[0].vx = 0;
+  points[0].vy = 0;
+
+  for (let index = 1; index < points.length; index += 1) {
+    const point = points[index];
+    const leader = points[index - 1];
+    const dx = point.x - leader.x;
+    const dy = point.y - leader.y;
+    const distance = Math.max(0.0001, Math.hypot(dx, dy));
+    const targetX = leader.x + dx / distance * segmentLength;
+    const targetY = leader.y + dy / distance * segmentLength;
+    point.vx += (targetX - point.x) * stiffness * delta;
+    point.vy += (targetY - point.y) * stiffness * delta;
+    const drag = Math.exp(-damping * delta);
+    point.vx *= drag;
+    point.vy *= drag;
+    point.x += point.vx * delta;
+    point.y += point.vy * delta;
+  }
+  return points;
 }
