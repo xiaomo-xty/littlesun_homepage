@@ -7,7 +7,18 @@ import {
 } from "@phosphor-icons/react";
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three/webgpu";
-import { SVGLoader } from "three/addons/loaders/SVGLoader.js";
+import {
+  DOLPHIN_BODY_LENGTH,
+  advanceDolphinSpine,
+  advanceRepulsionOffset,
+  createDolphinSpine,
+  rotateAngleTowards,
+  sampleDolphinRoute,
+  sampleSpineFrame,
+  type DolphinRoute,
+  type DolphinSpinePoint,
+  type RepulsionState,
+} from "../lib/dolphinSimulation";
 import {
   advanceRibbonChain,
   pointerRepulsion,
@@ -61,7 +72,6 @@ type FlowLine = {
 type DolphinPart = {
   attribute: THREE.BufferAttribute;
   basePositions: Float32Array;
-  deformTail: boolean;
 };
 
 function seededRandom(seed: number) {
@@ -76,18 +86,73 @@ function clamp01(value: number) {
   return Math.max(0, Math.min(1, value));
 }
 
-function lerpAngle(current: number, target: number, amount: number) {
-  const delta = Math.atan2(Math.sin(target - current), Math.cos(target - current));
-  return current + delta * amount;
+function createBodyShape() {
+  const shape = new THREE.Shape();
+  shape.moveTo(0.43, 0.025);
+  shape.bezierCurveTo(0.35, 0.055, 0.23, 0.075, 0.08, 0.105);
+  shape.bezierCurveTo(0.09, 0.31, -0.06, 0.49, -0.31, 0.56);
+  shape.bezierCurveTo(-0.86, 0.72, -1.62, 0.61, -2.19, 0.39);
+  shape.bezierCurveTo(-2.5, 0.27, -2.77, 0.17, -3.02, 0.09);
+  shape.lineTo(-3.04, -0.075);
+  shape.bezierCurveTo(-2.76, -0.13, -2.49, -0.2, -2.2, -0.31);
+  shape.bezierCurveTo(-1.61, -0.52, -0.9, -0.53, -0.39, -0.37);
+  shape.bezierCurveTo(-0.11, -0.28, 0.09, -0.17, 0.29, -0.135);
+  shape.bezierCurveTo(0.37, -0.115, 0.44, -0.055, 0.43, 0.025);
+  shape.closePath();
+  return shape;
+}
+
+function createBellyShape() {
+  const shape = new THREE.Shape();
+  shape.moveTo(0.38, -0.045);
+  shape.bezierCurveTo(0.21, -0.08, 0.04, -0.17, -0.2, -0.25);
+  shape.bezierCurveTo(-0.72, -0.44, -1.42, -0.46, -2.18, -0.3);
+  shape.bezierCurveTo(-1.55, -0.53, -0.86, -0.53, -0.38, -0.37);
+  shape.bezierCurveTo(-0.1, -0.28, 0.1, -0.17, 0.29, -0.135);
+  shape.bezierCurveTo(0.35, -0.11, 0.39, -0.075, 0.38, -0.045);
+  shape.closePath();
+  return shape;
+}
+
+function createDorsalFinShape() {
+  const shape = new THREE.Shape();
+  shape.moveTo(-1.12, 0.58);
+  shape.bezierCurveTo(-1.38, 0.95, -1.69, 1.02, -1.91, 0.46);
+  shape.bezierCurveTo(-1.62, 0.53, -1.36, 0.57, -1.12, 0.58);
+  shape.closePath();
+  return shape;
+}
+
+function createPectoralFinShape() {
+  const shape = new THREE.Shape();
+  shape.moveTo(-0.68, -0.23);
+  shape.bezierCurveTo(-0.88, -0.52, -1.12, -0.91, -1.42, -0.93);
+  shape.bezierCurveTo(-1.33, -0.53, -1.14, -0.24, -0.77, -0.12);
+  shape.bezierCurveTo(-0.71, -0.14, -0.68, -0.18, -0.68, -0.23);
+  shape.closePath();
+  return shape;
+}
+
+function createTailShape() {
+  const shape = new THREE.Shape();
+  shape.moveTo(-2.93, 0.08);
+  shape.bezierCurveTo(-3.19, 0.14, -3.39, 0.4, -3.76, 0.49);
+  shape.bezierCurveTo(-3.67, 0.24, -3.52, 0.08, -3.21, 0.005);
+  shape.bezierCurveTo(-3.52, -0.04, -3.72, -0.18, -3.86, -0.42);
+  shape.bezierCurveTo(-3.43, -0.37, -3.2, -0.16, -2.95, -0.07);
+  shape.closePath();
+  return shape;
 }
 
 export default function CreatureDemo() {
   const hostRef = useRef<HTMLDivElement>(null);
   const pausedRef = useRef(false);
   const themeRef = useRef<Theme>("dark");
+  const routeRef = useRef<DolphinRoute>("figure8");
   const resetVersionRef = useRef(0);
   const [paused, setPaused] = useState(false);
   const [theme, setTheme] = useState<Theme>("dark");
+  const [route, setRoute] = useState<DolphinRoute>("figure8");
   const [backend, setBackend] = useState("initializing");
   const [status, setStatus] = useState<"loading" | "ready" | "fallback">("loading");
 
@@ -98,6 +163,10 @@ export default function CreatureDemo() {
   useEffect(() => {
     themeRef.current = theme;
   }, [theme]);
+
+  useEffect(() => {
+    routeRef.current = route;
+  }, [route]);
 
   useEffect(() => {
     const host = hostRef.current;
@@ -113,7 +182,7 @@ export default function CreatureDemo() {
         resources.add(resource);
         return resource;
       };
-      const random = seededRandom(20260819);
+      const random = seededRandom(20260820);
       const mobile = window.matchMedia("(max-width: 767px)").matches;
       const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
       const lowPower = (navigator.hardwareConcurrency || 8) <= 4;
@@ -125,6 +194,7 @@ export default function CreatureDemo() {
         setStatus("fallback");
         return;
       }
+
       const webGPUAvailable = window.isSecureContext && "gpu" in navigator;
       const forceWebGL = requestedBackend === "webgl2" || !webGPUAvailable;
       const balanced = mobile || lowPower || forceWebGL;
@@ -157,6 +227,7 @@ export default function CreatureDemo() {
       const backendFlags = renderer.backend as BackendFlags;
       const backendName = backendFlags.isWebGPUBackend ? "webgpu" : backendFlags.isWebGLBackend ? "webgl2" : "static";
       host.dataset.backend = backendName;
+      host.dataset.creature = "same-side-dolphin";
       setBackend(backendName);
 
       const scene = new THREE.Scene();
@@ -173,9 +244,16 @@ export default function CreatureDemo() {
       let lastTime = performance.now();
       let pageVisible = !document.hidden;
       let activeTheme = themeRef.current;
+      let activeRoute = routeRef.current;
       let resetVersion = resetVersionRef.current;
+      let routeClock = 0;
       let pulse = 0;
+      let dolphinScale = mobile ? 0.56 : 0.9;
+      let dolphinHeading = 0;
+      let dolphinSpine: DolphinSpinePoint[] = createDolphinSpine({ x: 0, y: 0 }, 0, dolphinScale);
+      const dolphinHead = new THREE.Vector2();
       const pulseOrigin = new THREE.Vector2();
+      const repulsionOffset: RepulsionState = { x: 0, y: 0, vx: 0, vy: 0 };
 
       const pointer = {
         active: false,
@@ -259,6 +337,17 @@ export default function CreatureDemo() {
       const jellyEdgeGeometry = register(new THREE.EdgesGeometry(jellyGeometry, 34));
       const jellies: DemoJelly[] = [];
 
+      const resetTentacles = (jelly: DemoJelly) => {
+        jelly.tentacles.forEach((tentacle) => {
+          tentacle.points.forEach((point, pointIndex) => {
+            point.x = tentacle.offset;
+            point.y = -pointIndex * 0.16;
+            point.vx = 0;
+            point.vy = 0;
+          });
+        });
+      };
+
       const createJelly = (x: number, y: number, scale: number, phase: number) => {
         const fill = register(new THREE.MeshBasicMaterial({ transparent: true, side: THREE.DoubleSide, depthWrite: false }));
         const edge = register(new THREE.LineBasicMaterial({ transparent: true, depthWrite: false }));
@@ -271,10 +360,10 @@ export default function CreatureDemo() {
         world.add(group);
 
         const tentacles: Tentacle[] = Array.from({ length: 4 }, (_, tentacleIndex) => {
-          const offset = (tentacleIndex - 1.5) * 0.22;
-          const points = Array.from({ length: balanced ? 5 : 7 }, (_, pointIndex) => ({
-            x: x + offset * scale,
-            y: y - pointIndex * 0.18 * scale,
+          const offset = (tentacleIndex - 1.5) * 0.21;
+          const points = Array.from({ length: balanced ? 5 : 6 }, (_, pointIndex) => ({
+            x: offset,
+            y: -pointIndex * 0.16,
             vx: 0,
             vy: 0,
           }));
@@ -286,11 +375,11 @@ export default function CreatureDemo() {
           const material = register(new THREE.LineBasicMaterial({ transparent: true, depthWrite: false }));
           const line = new THREE.Line(geometry, material);
           line.frustumCulled = false;
-          world.add(line);
+          group.add(line);
           return { points, positions, attribute, material, offset };
         });
 
-        const jelly: DemoJelly = {
+        jellies.push({
           x,
           y,
           vx: 0.05 + random() * 0.08,
@@ -301,78 +390,117 @@ export default function CreatureDemo() {
           fill,
           edge,
           tentacles,
-        };
-        jellies.push(jelly);
+        });
       };
 
       createJelly(-3.8, 1.7, 0.72, 0.2);
       createJelly(3.35, -1.55, 0.58, 2.5);
       if (!balanced) createJelly(1.1, 2.65, 0.42, 4.1);
 
-      let dolphinData: Awaited<ReturnType<SVGLoader["loadAsync"]>>;
-      try {
-        dolphinData = await new SVGLoader().loadAsync("/labs/twemoji-dolphin.svg");
-      } catch {
-        resources.forEach((resource) => resource.dispose());
-        renderer.dispose();
-        if (!destroyed) {
-          host.dataset.status = "fallback";
-          setBackend("static");
-          setStatus("fallback");
-        }
-        return;
-      }
-      const dolphin = new THREE.Group();
       const dolphinParts: DolphinPart[] = [];
-      const dolphinMaterials: THREE.MeshBasicMaterial[] = [];
-      dolphinData.paths.forEach((path, pathIndex) => {
-        const fill = path.userData?.style?.fill;
-        if (fill === "none") return;
-        const material = register(new THREE.MeshBasicMaterial({
-          color: path.color,
-          transparent: true,
-          depthTest: false,
-          depthWrite: false,
-          side: THREE.DoubleSide,
-        }));
-        dolphinMaterials.push(material);
-        SVGLoader.createShapes(path).forEach((shape) => {
-          const geometry = register(new THREE.ShapeGeometry(shape, balanced ? 8 : 16));
-          geometry.translate(-18, -18, 0);
-          geometry.scale(3.05 / 36, -3.05 / 36, 1);
-          const attribute = geometry.getAttribute("position") as THREE.BufferAttribute;
-          attribute.setUsage(THREE.DynamicDrawUsage);
-          dolphinParts.push({
-            attribute,
-            basePositions: new Float32Array(attribute.array as ArrayLike<number>),
-            deformTail: pathIndex === 0,
-          });
-          const mesh = new THREE.Mesh(geometry, material);
-          mesh.position.z = pathIndex * 0.004;
-          mesh.renderOrder = 100 + pathIndex;
-          dolphin.add(mesh);
-        });
-      });
-      dolphin.frustumCulled = false;
-      world.add(dolphin);
+      const createMaterial = (color: number) => register(new THREE.MeshBasicMaterial({
+        color,
+        transparent: true,
+        depthTest: false,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+      }));
+      const bodyMaterial = createMaterial(0x58b4dc);
+      const bellyMaterial = createMaterial(0xb5e4ec);
+      const finMaterial = createMaterial(0x3c94bd);
+      const eyeMaterial = createMaterial(0x071722);
+      const outlineMaterial = register(new THREE.LineBasicMaterial({
+        color: 0xc4eff7,
+        transparent: true,
+        depthTest: false,
+        depthWrite: false,
+      }));
+      const mouthMaterial = register(new THREE.LineBasicMaterial({
+        color: 0x17526d,
+        transparent: true,
+        depthTest: false,
+        depthWrite: false,
+      }));
 
-      const dolphinPosition = new THREE.Vector2(-1.8, 0.4);
-      const dolphinVelocity = new THREE.Vector2(0.62, 0.08);
-      const dolphinTarget = new THREE.Vector2(2.8, 0.7);
-      const dolphinForce = new THREE.Vector2();
-      const dolphinDesired = new THREE.Vector2();
-      let dolphinAngle = 0;
-      let wanderTimer = 0;
+      const addDynamicPart = (geometry: THREE.BufferGeometry, object: THREE.Object3D, renderOrder: number) => {
+        const attribute = geometry.getAttribute("position") as THREE.BufferAttribute;
+        attribute.setUsage(THREE.DynamicDrawUsage);
+        dolphinParts.push({
+          attribute,
+          basePositions: new Float32Array(attribute.array as ArrayLike<number>),
+        });
+        object.renderOrder = renderOrder;
+        object.frustumCulled = false;
+        world.add(object);
+      };
+
+      const addShapePart = (shape: THREE.Shape, material: THREE.MeshBasicMaterial, order: number) => {
+        const geometry = register(new THREE.ShapeGeometry(shape, balanced ? 18 : 28));
+        const mesh = new THREE.Mesh(geometry, material);
+        mesh.position.z = -0.2 + order * 0.001;
+        addDynamicPart(geometry, mesh, order);
+      };
+
+      const bodyShape = createBodyShape();
+      addShapePart(createTailShape(), finMaterial, 88);
+      addShapePart(createDorsalFinShape(), finMaterial, 89);
+      addShapePart(bodyShape, bodyMaterial, 90);
+      addShapePart(createBellyShape(), bellyMaterial, 91);
+      addShapePart(createPectoralFinShape(), finMaterial, 92);
+
+      const contourPoints = bodyShape.getSpacedPoints(balanced ? 44 : 72);
+      const contourPositions = new Float32Array((contourPoints.length + 1) * 3);
+      contourPoints.forEach((point, index) => {
+        contourPositions[index * 3] = point.x;
+        contourPositions[index * 3 + 1] = point.y;
+      });
+      contourPositions[contourPoints.length * 3] = contourPoints[0].x;
+      contourPositions[contourPoints.length * 3 + 1] = contourPoints[0].y;
+      const contourGeometry = register(new THREE.BufferGeometry());
+      contourGeometry.setAttribute("position", new THREE.BufferAttribute(contourPositions, 3));
+      const contour = new THREE.Line(contourGeometry, outlineMaterial);
+      contour.position.z = -0.105;
+      addDynamicPart(contourGeometry, contour, 93);
+
+      const mouthPositions = new Float32Array([
+        0.38, -0.065, 0,
+        0.3, -0.085, 0,
+        0.22, -0.1, 0,
+        0.14, -0.11, 0,
+        0.06, -0.115, 0,
+      ]);
+      const mouthGeometry = register(new THREE.BufferGeometry());
+      mouthGeometry.setAttribute("position", new THREE.BufferAttribute(mouthPositions, 3));
+      const mouth = new THREE.Line(mouthGeometry, mouthMaterial);
+      mouth.position.z = -0.1;
+      addDynamicPart(mouthGeometry, mouth, 94);
+
+      const eyeGeometry = register(new THREE.CircleGeometry(0.052, balanced ? 12 : 18));
+      eyeGeometry.translate(-0.13, 0.22, 0);
+      const eye = new THREE.Mesh(eyeGeometry, eyeMaterial);
+      eye.position.z = -0.095;
+      addDynamicPart(eyeGeometry, eye, 95);
 
       const applyPalette = () => {
         activeTheme = themeRef.current;
         const dark = activeTheme === "dark";
         palette.accent.set(dark ? "#61bff0" : "#267aa8");
         palette.accentSoft.set(dark ? "#b6eafa" : "#73b8d7");
-        palette.line.set(dark ? "#31566a" : "#8eb5c7");
+        palette.line.set(dark ? "#31566a" : "#7faabc");
         palette.jelly.set(dark ? "#3c8fb4" : "#4f9ebe");
         palette.page.set(dark ? "#071722" : "#f8faf8");
         renderer.setClearColor(palette.page, 1);
+        bodyMaterial.color.set(dark ? "#58b4dc" : "#2b82a9");
+        bellyMaterial.color.set(dark ? "#b5e4ec" : "#9ed0dc");
+        finMaterial.color.set(dark ? "#3c94bd" : "#236e94");
+        eyeMaterial.color.set(dark ? "#071722" : "#092632");
+        outlineMaterial.color.set(dark ? "#c4eff7" : "#155d7b");
+        mouthMaterial.color.set(dark ? "#17526d" : "#164c62");
+        bodyMaterial.opacity = dark ? 0.94 : 0.9;
+        bellyMaterial.opacity = dark ? 0.88 : 0.8;
+        finMaterial.opacity = dark ? 0.9 : 0.84;
+        outlineMaterial.opacity = dark ? 0.78 : 0.68;
+        mouthMaterial.opacity = dark ? 0.72 : 0.7;
         flowLines.forEach((line) => line.material.color.copy(palette.line));
         jellies.forEach((jelly) => {
           jelly.fill.color.copy(palette.jelly);
@@ -387,6 +515,7 @@ export default function CreatureDemo() {
         width = rect.width;
         height = rect.height;
         viewHalfWidth = viewHalfHeight * width / height;
+        dolphinScale = mobile ? Math.min(0.58, Math.max(0.5, viewHalfWidth / 4.2)) : 0.9;
         camera.left = -viewHalfWidth;
         camera.right = viewHalfWidth;
         camera.top = viewHalfHeight;
@@ -402,16 +531,56 @@ export default function CreatureDemo() {
         );
       };
 
+      const updateDolphinGeometry = () => {
+        const modelScale = dolphinScale;
+        const headFrame = sampleSpineFrame(dolphinSpine, 0);
+        const tailFrame = sampleSpineFrame(dolphinSpine, 1);
+        dolphinParts.forEach((part) => {
+          for (let index = 0; index < part.basePositions.length; index += 3) {
+            const baseX = part.basePositions[index];
+            const baseY = part.basePositions[index + 1] * modelScale;
+            const longitudinal = -baseX;
+            let frameSample;
+            let along = 0;
+            if (longitudinal < 0) {
+              frameSample = headFrame;
+              along = -longitudinal * modelScale;
+            } else if (longitudinal > DOLPHIN_BODY_LENGTH) {
+              frameSample = tailFrame;
+              along = -(longitudinal - DOLPHIN_BODY_LENGTH) * modelScale;
+            } else {
+              frameSample = sampleSpineFrame(dolphinSpine, longitudinal / DOLPHIN_BODY_LENGTH);
+            }
+            const x = frameSample.position.x
+              + frameSample.tangent.x * along
+              + frameSample.normal.x * baseY;
+            const y = frameSample.position.y
+              + frameSample.tangent.y * along
+              + frameSample.normal.y * baseY;
+            part.attribute.setXYZ(index / 3, x, y, part.basePositions[index + 2]);
+          }
+          part.attribute.needsUpdate = true;
+        });
+      };
+
       const resetSimulation = () => {
-        dolphinPosition.set(-Math.min(2.2, viewHalfWidth * 0.32), 0.35);
-        dolphinVelocity.set(0.62, 0.08);
-        dolphinTarget.set(Math.min(3, viewHalfWidth * 0.42), 0.7);
-        wanderTimer = 0;
+        routeClock = 0;
+        repulsionOffset.x = 0;
+        repulsionOffset.y = 0;
+        repulsionOffset.vx = 0;
+        repulsionOffset.vy = 0;
+        const radiusX = Math.max(0.65, Math.min(4.2, viewHalfWidth - DOLPHIN_BODY_LENGTH * dolphinScale * 0.72));
+        const routeSample = sampleDolphinRoute(0, routeRef.current, radiusX, mobile ? 1.25 : 1.55);
+        dolphinHeading = routeSample.heading;
+        dolphinHead.set(routeSample.position.x, routeSample.position.y + (mobile ? -0.2 : -0.45));
+        dolphinSpine = createDolphinSpine(dolphinHead, dolphinHeading, dolphinScale);
+        updateDolphinGeometry();
         jellies.forEach((jelly, index) => {
           jelly.x = [-3.8, 3.35, 1.1][index] || 0;
           jelly.y = [1.7, -1.55, 2.65][index] || 0;
           jelly.vx = 0.05 + index * 0.018;
           jelly.vy = 0.035;
+          resetTentacles(jelly);
         });
         particles.forEach((particle) => {
           particle.x = random() * viewHalfWidth * 2 - viewHalfWidth;
@@ -442,81 +611,45 @@ export default function CreatureDemo() {
             flowLine.positions[offset + 2] = curveSample.z;
           }
           flowLine.attribute.needsUpdate = true;
-          flowLine.material.opacity = activeTheme === "dark" ? 0.28 : 0.32;
+          flowLine.material.opacity = activeTheme === "dark" ? 0.28 : 0.3;
         });
       };
 
-      const updateDolphin = (time: number, delta: number) => {
-        const seconds = time * 0.001;
-        wanderTimer -= delta;
-        if (wanderTimer <= 0 || dolphinPosition.distanceTo(dolphinTarget) < 0.8) {
-          dolphinTarget.set(
-            (random() * 1.35 - 0.675) * viewHalfWidth,
-            (random() * 1.32 - 0.66) * viewHalfHeight,
-          );
-          wanderTimer = 3.4 + random() * 4.2;
-        }
-
-        dolphinForce.set(0, 0);
-        dolphinDesired.copy(dolphinTarget).sub(dolphinPosition);
-        if (dolphinDesired.lengthSq() > 0.001) dolphinForce.add(dolphinDesired.normalize().multiplyScalar(0.42));
-        sampleOceanFlow(dolphinPosition, seconds, flowForce);
-        dolphinForce.x += flowForce.x * 0.2;
-        dolphinForce.y += flowForce.y * 0.2;
+      const updateDolphin = (delta: number) => {
+        routeClock += delta;
+        const radiusX = Math.max(0.65, Math.min(4.2, viewHalfWidth - DOLPHIN_BODY_LENGTH * dolphinScale * 0.72));
+        const radiusY = mobile ? 1.25 : 1.55;
+        const routeSample = sampleDolphinRoute(routeClock, routeRef.current, radiusX, radiusY, mobile ? 0.34 : 0.32);
+        repelForce.x = 0;
+        repelForce.y = 0;
         if (pointer.active) {
-          pointerRepulsion(dolphinPosition, pointerWorld, mobile ? 2.5 : 3.1, 6.2 + pointer.speed * 13, repelForce);
-          dolphinForce.x += repelForce.x;
-          dolphinForce.y += repelForce.y;
+          pointerRepulsion(
+            dolphinHead,
+            pointerWorld,
+            mobile ? 2.2 : 2.9,
+            5.8 + pointer.speed * 10,
+            repelForce,
+          );
         }
-
-        const marginX = Math.max(1.15, Math.min(1.5, viewHalfWidth * 0.2));
-        const boundX = Math.max(0.6, viewHalfWidth - marginX);
-        const boundY = viewHalfHeight - 1.25;
-        if (Math.abs(dolphinPosition.x) > boundX) dolphinForce.x += -Math.sign(dolphinPosition.x) * 2.4;
-        if (Math.abs(dolphinPosition.y) > boundY) dolphinForce.y += -Math.sign(dolphinPosition.y) * 2.4;
-
-        dolphinVelocity.addScaledVector(dolphinForce, delta);
-        dolphinVelocity.multiplyScalar(Math.exp(-0.72 * delta));
-        dolphinVelocity.clampLength(0.24, mobile ? 0.76 : 0.92);
-        dolphinPosition.addScaledVector(dolphinVelocity, delta);
-        const bankTarget = THREE.MathUtils.clamp(
-          Math.atan2(dolphinVelocity.y, Math.abs(dolphinVelocity.x) + 0.18),
-          -0.48,
-          0.48,
+        advanceRepulsionOffset(repulsionOffset, repelForce, delta, 1.9, 3.1);
+        dolphinHead.set(
+          routeSample.position.x + repulsionOffset.x,
+          routeSample.position.y + repulsionOffset.y + (mobile ? -0.2 : -0.45),
         );
-        dolphinAngle = lerpAngle(dolphinAngle, bankTarget, Math.min(1, delta * 2.2));
-
-        const tailAmplitude = 0.16 + dolphinVelocity.length() * 0.09;
-        dolphinParts.forEach((part) => {
-          if (!part.deformTail) return;
-          const positions = part.attribute.array as Float32Array;
-          for (let index = 0; index < positions.length; index += 3) {
-            const baseX = part.basePositions[index];
-            const baseY = part.basePositions[index + 1];
-            const verticalWeight = clamp01((-baseY - 0.48) / 0.82);
-            const horizontalWeight = 1 - clamp01((Math.abs(baseX) - 0.66) / 0.42);
-            const weight = verticalWeight * horizontalWeight;
-            const bend = Math.sin(seconds * 4.1 + weight * 1.45) * tailAmplitude * weight * weight;
-            const pivotX = 0.02;
-            const pivotY = -0.52;
-            const dx = baseX - pivotX;
-            const dy = baseY - pivotY;
-            const cosine = Math.cos(bend);
-            const sine = Math.sin(bend);
-            positions[index] = pivotX + dx * cosine - dy * sine;
-            positions[index + 1] = pivotY + dx * sine + dy * cosine;
-          }
-          part.attribute.needsUpdate = true;
-        });
-        dolphin.position.set(dolphinPosition.x, dolphinPosition.y, -0.25);
-        dolphin.rotation.z = dolphinAngle;
-        const breathe = 1 + Math.sin(seconds * 1.7) * 0.018;
-        const baseScale = mobile ? 0.78 : 0.92;
-        const facing = dolphinVelocity.x >= 0 ? -1 : 1;
-        dolphin.scale.set(facing * baseScale * breathe, baseScale / breathe, 1);
-        dolphinMaterials.forEach((material) => {
-          material.opacity = activeTheme === "dark" ? 0.84 : 0.78;
-        });
+        const headingTarget = Math.atan2(
+          routeSample.velocity.y + repulsionOffset.vy * 0.72,
+          routeSample.velocity.x + repulsionOffset.vx * 0.72,
+        );
+        dolphinHeading = rotateAngleTowards(dolphinHeading, headingTarget, (mobile ? 1.28 : 1.18) * delta);
+        advanceDolphinSpine(
+          dolphinSpine,
+          dolphinHead,
+          dolphinHeading,
+          routeClock,
+          delta,
+          dolphinScale,
+        );
+        updateDolphinGeometry();
       };
 
       const updateJellies = (time: number, delta: number) => {
@@ -536,10 +669,24 @@ export default function CreatureDemo() {
           jelly.y += jelly.vy * delta;
 
           const margin = 1;
-          if (jelly.x < -viewHalfWidth - margin) jelly.x = viewHalfWidth + margin;
-          if (jelly.x > viewHalfWidth + margin) jelly.x = -viewHalfWidth - margin;
-          if (jelly.y > viewHalfHeight + margin) jelly.y = -viewHalfHeight - margin;
-          if (jelly.y < -viewHalfHeight - margin) jelly.y = viewHalfHeight + margin;
+          let wrapped = false;
+          if (jelly.x < -viewHalfWidth - margin) {
+            jelly.x = viewHalfWidth + margin;
+            wrapped = true;
+          }
+          if (jelly.x > viewHalfWidth + margin) {
+            jelly.x = -viewHalfWidth - margin;
+            wrapped = true;
+          }
+          if (jelly.y > viewHalfHeight + margin) {
+            jelly.y = -viewHalfHeight - margin;
+            wrapped = true;
+          }
+          if (jelly.y < -viewHalfHeight - margin) {
+            jelly.y = viewHalfHeight + margin;
+            wrapped = true;
+          }
+          if (wrapped) resetTentacles(jelly);
 
           const breath = Math.sin(seconds * 1.45 + jelly.phase);
           const scaleX = jelly.scale * (1 + breath * 0.08);
@@ -547,24 +694,22 @@ export default function CreatureDemo() {
           jelly.group.position.set(jelly.x, jelly.y, -0.82);
           jelly.group.rotation.z = Math.sin(seconds * 0.4 + jelly.phase) * 0.09;
           jelly.group.scale.set(scaleX, scaleY, 1);
-          jelly.fill.opacity = activeTheme === "dark" ? 0.38 : 0.32;
-          jelly.edge.opacity = activeTheme === "dark" ? 0.72 : 0.64;
+          jelly.fill.opacity = activeTheme === "dark" ? 0.38 : 0.3;
+          jelly.edge.opacity = activeTheme === "dark" ? 0.72 : 0.6;
 
           jelly.tentacles.forEach((tentacle, tentacleIndex) => {
-            const anchor = {
-              x: jelly.x + tentacle.offset * scaleX,
-              y: jelly.y - 0.03 * scaleY,
-            };
-            advanceRibbonChain(tentacle.points, anchor, delta, 0.17 * jelly.scale, 18, 5.6);
+            const anchor = { x: tentacle.offset, y: -0.03 };
+            advanceRibbonChain(tentacle.points, anchor, delta, 0.16, 20, 6.4);
             tentacle.points.forEach((point, pointIndex) => {
               const offset = pointIndex * 3;
               const trail = pointIndex / Math.max(1, tentacle.points.length - 1);
-              tentacle.positions[offset] = point.x + Math.sin(seconds * 1.1 + jelly.phase + tentacleIndex + pointIndex * 0.5) * trail * 0.025;
+              tentacle.positions[offset] = point.x
+                + Math.sin(seconds * 1.1 + jelly.phase + tentacleIndex + pointIndex * 0.5) * trail * 0.022;
               tentacle.positions[offset + 1] = point.y;
-              tentacle.positions[offset + 2] = -0.84;
+              tentacle.positions[offset + 2] = -0.02;
             });
             tentacle.attribute.needsUpdate = true;
-            tentacle.material.opacity = (activeTheme === "dark" ? 0.62 : 0.54) * (0.75 + jelly.scale * 0.25);
+            tentacle.material.opacity = (activeTheme === "dark" ? 0.62 : 0.5) * (0.75 + jelly.scale * 0.25);
           });
         });
       };
@@ -587,11 +732,11 @@ export default function CreatureDemo() {
             particle.vx += dx / distance * strength;
             particle.vy += dy / distance * strength;
           }
-          const dolphinDistance = Math.max(0.25, Math.hypot(particle.x - dolphinPosition.x, particle.y - dolphinPosition.y));
+          const dolphinDistance = Math.max(0.25, Math.hypot(particle.x - dolphinHead.x, particle.y - dolphinHead.y));
           if (dolphinDistance < 1.6) {
-            const wake = (1 - dolphinDistance / 1.6) * delta * 0.38;
-            particle.vx -= dolphinVelocity.x * wake;
-            particle.vy -= dolphinVelocity.y * wake;
+            const wake = (1 - dolphinDistance / 1.6) * delta * 0.3;
+            particle.vx -= Math.cos(dolphinHeading) * wake;
+            particle.vy -= Math.sin(dolphinHeading) * wake;
           }
           sampleOceanFlow(particle, seconds + particle.phase, flowForce);
           particle.x += (flowForce.x * 0.055 + particle.vx) * delta;
@@ -617,7 +762,7 @@ export default function CreatureDemo() {
         });
         particleMesh.instanceMatrix.needsUpdate = true;
         if (particleMesh.instanceColor) particleMesh.instanceColor.needsUpdate = true;
-        particleMaterial.opacity = activeTheme === "dark" ? 0.48 : 0.4;
+        particleMaterial.opacity = activeTheme === "dark" ? 0.48 : 0.38;
       };
 
       const render = (time: number) => {
@@ -625,6 +770,10 @@ export default function CreatureDemo() {
         const delta = Math.min(0.04, Math.max(0.001, (time - lastTime) / 1000));
         lastTime = time;
         if (activeTheme !== themeRef.current) applyPalette();
+        if (activeRoute !== routeRef.current) {
+          activeRoute = routeRef.current;
+          resetSimulation();
+        }
         if (resetVersion !== resetVersionRef.current) {
           resetVersion = resetVersionRef.current;
           resetSimulation();
@@ -634,7 +783,7 @@ export default function CreatureDemo() {
         updatePointerWorld();
         if (!pausedRef.current && !reduceMotion) {
           updateFlowLines(time);
-          updateDolphin(time, delta);
+          updateDolphin(delta);
           updateJellies(time, delta);
           updateParticles(time, delta);
         }
@@ -650,15 +799,18 @@ export default function CreatureDemo() {
       };
 
       const handlePointerMove = (event: PointerEvent) => {
+        const rect = host.getBoundingClientRect();
+        const localX = event.clientX - rect.left;
+        const localY = event.clientY - rect.top;
         const now = performance.now();
         const elapsed = Math.max(8, now - pointer.updatedAt);
-        const distance = Math.hypot(event.clientX - pointer.previousX, event.clientY - pointer.previousY);
+        const distance = Math.hypot(localX - pointer.previousX, localY - pointer.previousY);
         pointer.speed = pointer.active ? Math.min(2.4, distance / elapsed) : 0;
         pointer.active = event.pointerType !== "touch";
-        pointer.x = event.clientX;
-        pointer.y = event.clientY;
-        pointer.previousX = event.clientX;
-        pointer.previousY = event.clientY;
+        pointer.x = localX;
+        pointer.y = localY;
+        pointer.previousX = localX;
+        pointer.previousY = localY;
         pointer.updatedAt = now;
       };
 
@@ -668,8 +820,9 @@ export default function CreatureDemo() {
       };
 
       const handlePointerDown = (event: PointerEvent) => {
-        pointer.x = event.clientX;
-        pointer.y = event.clientY;
+        const rect = host.getBoundingClientRect();
+        pointer.x = event.clientX - rect.left;
+        pointer.y = event.clientY - rect.top;
         updatePointerWorld();
         pulseOrigin.copy(pointerWorld);
         pulse = 1;
@@ -682,14 +835,18 @@ export default function CreatureDemo() {
 
       const resizeObserver = new ResizeObserver(resize);
       resizeObserver.observe(host);
-      window.addEventListener("pointermove", handlePointerMove, { passive: true });
-      window.addEventListener("pointerdown", handlePointerDown, { passive: true });
-      document.documentElement.addEventListener("pointerleave", handlePointerLeave);
+      host.addEventListener("pointermove", handlePointerMove, { passive: true });
+      host.addEventListener("pointerdown", handlePointerDown, { passive: true });
+      host.addEventListener("pointerleave", handlePointerLeave);
       document.addEventListener("visibilitychange", handleVisibility);
 
       applyPalette();
       resize();
       resetSimulation();
+      const initialTime = performance.now();
+      updateFlowLines(initialTime);
+      updateJellies(initialTime, 1 / 60);
+      updateParticles(initialTime, 0);
       host.dataset.status = "ready";
       setStatus("ready");
       ensureRunning();
@@ -697,9 +854,9 @@ export default function CreatureDemo() {
       cleanupScene = () => {
         window.cancelAnimationFrame(frame);
         resizeObserver.disconnect();
-        window.removeEventListener("pointermove", handlePointerMove);
-        window.removeEventListener("pointerdown", handlePointerDown);
-        document.documentElement.removeEventListener("pointerleave", handlePointerLeave);
+        host.removeEventListener("pointermove", handlePointerMove);
+        host.removeEventListener("pointerdown", handlePointerDown);
+        host.removeEventListener("pointerleave", handlePointerLeave);
         document.removeEventListener("visibilitychange", handleVisibility);
         scene.clear();
         resources.forEach((resource) => resource.dispose());
@@ -717,34 +874,58 @@ export default function CreatureDemo() {
 
   const togglePaused = () => setPaused((value) => !value);
   const toggleTheme = () => setTheme((value) => value === "dark" ? "light" : "dark");
+  const selectRoute = (nextRoute: DolphinRoute) => {
+    routeRef.current = nextRoute;
+    setRoute(nextRoute);
+  };
   const reset = () => {
     resetVersionRef.current += 1;
     setPaused(false);
   };
 
   return (
-    <main className="creature-demo" data-theme={theme} data-status={status}>
-      <div ref={hostRef} className="creature-demo-world" data-status={status} data-backend={backend}>
+    <main className="creature-demo" data-theme={theme} data-status={status} data-route={route}>
+      <div
+        ref={hostRef}
+        className="creature-demo-world"
+        data-status={status}
+        data-backend={backend}
+        data-facing="same-side"
+      >
         <canvas aria-hidden="true" />
-        <img className="creature-demo-static" src="/labs/twemoji-dolphin.svg" alt="" />
+        <svg className="creature-demo-static" viewBox="-4.05 -1.05 4.7 2.1" aria-hidden="true">
+          <path className="creature-demo-static-fin" d="M-1.12-.58C-1.38-.95-1.69-1.02-1.91-.46C-1.62-.53-1.36-.57-1.12-.58Z" />
+          <path className="creature-demo-static-tail" d="M-2.93-.08C-3.19-.14-3.39-.4-3.76-.49C-3.67-.24-3.52-.08-3.21-.005C-3.52.04-3.72.18-3.86.42C-3.43.37-3.2.16-2.95.07Z" />
+          <path className="creature-demo-static-body" d="M.43-.025C.35-.055.23-.075.08-.105C.09-.31-.06-.49-.31-.56C-.86-.72-1.62-.61-2.19-.39C-2.5-.27-2.77-.17-3.02-.09L-3.04.075C-2.76.13-2.49.2-2.2.31C-1.61.52-.9.53-.39.37C-.11.28.09.17.29.135C.37.115.44.055.43-.025Z" />
+          <path className="creature-demo-static-belly" d="M.38.045C.21.08.04.17-.2.25C-.72.44-1.42.46-2.18.3C-1.55.53-.86.53-.38.37C-.1.28.1.17.29.135C.35.11.39.075.38.045Z" />
+          <path className="creature-demo-static-fin" d="M-.68.23C-.88.52-1.12.91-1.42.93C-1.33.53-1.14.24-.77.12C-.71.14-.68.18-.68.23Z" />
+          <circle className="creature-demo-static-eye" cx="-.13" cy="-.22" r=".052" />
+          <path className="creature-demo-static-mouth" d="M.38.065C.3.085.18.11.06.115" />
+        </svg>
         <div className="creature-demo-post" aria-hidden="true"></div>
       </div>
 
       <header className="creature-demo-header">
-        <p>Animation prototype 01</p>
-        <h1>Drift Companions</h1>
+        <p>Same-side procedural motion</p>
+        <h1>Dolphin motion study</h1>
       </header>
 
-      <div className="creature-demo-controls" role="toolbar" aria-label="演示控制">
-        <button type="button" onClick={togglePaused} aria-pressed={paused} title={paused ? "继续" : "暂停"} aria-label={paused ? "继续动画" : "暂停动画"}>
-          {paused ? <PlayIcon size={19} weight="fill" /> : <PauseIcon size={19} weight="fill" />}
-        </button>
-        <button type="button" onClick={reset} title="重置" aria-label="重置动画">
-          <ArrowCounterClockwiseIcon size={20} weight="bold" />
-        </button>
-        <button type="button" onClick={toggleTheme} title={theme === "dark" ? "浅色主题" : "深色主题"} aria-label={theme === "dark" ? "切换到浅色主题" : "切换到深色主题"}>
-          {theme === "dark" ? <SunIcon size={20} weight="bold" /> : <MoonIcon size={20} weight="bold" />}
-        </button>
+      <div className="creature-demo-toolbar">
+        <div className="creature-demo-route" role="group" aria-label="游动路径">
+          <button type="button" aria-pressed={route === "figure8"} onClick={() => selectRoute("figure8")}>8 字</button>
+          <button type="button" aria-pressed={route === "orbit"} onClick={() => selectRoute("orbit")}>环游</button>
+        </div>
+        <div className="creature-demo-controls" role="toolbar" aria-label="演示控制">
+          <button type="button" onClick={togglePaused} aria-pressed={paused} title={paused ? "继续" : "暂停"} aria-label={paused ? "继续动画" : "暂停动画"}>
+            {paused ? <PlayIcon size={19} weight="fill" /> : <PauseIcon size={19} weight="fill" />}
+          </button>
+          <button type="button" onClick={reset} title="重置" aria-label="重置动画">
+            <ArrowCounterClockwiseIcon size={20} weight="bold" />
+          </button>
+          <button type="button" onClick={toggleTheme} title={theme === "dark" ? "浅色主题" : "深色主题"} aria-label={theme === "dark" ? "切换到浅色主题" : "切换到深色主题"}>
+            {theme === "dark" ? <SunIcon size={20} weight="bold" /> : <MoonIcon size={20} weight="bold" />}
+          </button>
+        </div>
       </div>
 
       <footer className="creature-demo-footer">
@@ -753,9 +934,6 @@ export default function CreatureDemo() {
           <span>{backend}</span>
           <span>{paused ? "paused" : status}</span>
         </div>
-        <a href="https://github.com/jdecked/twemoji/blob/main/assets/svg/1f42c.svg" target="_blank" rel="noreferrer">
-          Dolphin: Twemoji / CC BY 4.0
-        </a>
       </footer>
     </main>
   );
