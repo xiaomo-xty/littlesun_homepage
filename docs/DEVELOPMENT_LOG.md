@@ -552,3 +552,37 @@
 阻塞与证据：
 
 - 静态概念尚未获得用户确认，因此动画实现与主页集成均被门禁阻止。
+
+## 2026-08-19 / v0.6 Creature Animation Demo
+
+今天完成：
+
+- 在 `feature/v0.6-creature-demo` 建立 `/labs/space-ocean-demo/` 独立路由，没有修改主页 `AmbientWorld.tsx`。
+- 默认使用 Three.js `WebGPURenderer`，保留 `?backend=webgl2` 与 `?backend=static` 两条可重复验收路径。
+- 发现 SVG 外部图像纹理在 WebGPU 中触发 `copyExternalImageToTexture` 失败，放弃纹理平面，改为解析 Twemoji SVG 路径并生成真实矢量网格。
+- 仅对海豚主轮廓的尾部权重区域做顶点弯曲，眼睛、腹部、鳍和头部保持稳定。
+- 将整身旋转改为左右翻身加小幅俯仰，避免垂直游动时出现侧翻怪感。
+- 加入 3 只月水母、触手短链、解析流场、Catmull-Rom 流线和 124 个方形像素浮游物；平衡档使用 2 只水母与 72 个像素。
+- 鼠标对海豚、水母和像素只产生斥力，点击产生一次扩散脉冲；增加暂停、重置与主题控制。
+- 将浅色 Demo 基底从冰蓝灰调整为 `#f8faf8` 中性暖白。
+- 补充静态兜底、reduced-motion、页面不可见暂停和透明度偏好降级。
+
+当前现象：
+
+- 桌面 1280 x 720 默认路径为 `webgpu / ready`，强制 WebGL2 为 `webgl2 / ready`，两条干净会话均无 console error/warning。
+- 移动 390 x 844 深浅主题均无横向溢出、文字裁切或控件重叠。
+- 海豚尾部在连续两帧中有明显形变，脸部和头部保持稳定；水母触手存在滞后，像素粒子持续闪烁和漂移。
+- 鼠标靠近后生物远离指针，点击脉冲推开附近像素；暂停、主题和重置状态正确。
+- 桌面与移动场景截图像素检查均为非空。
+- `bun test`：8 passed、0 failed。
+- `bun run check`：0 errors、0 warnings、0 hints。
+- `bun run build`：静态生产构建成功。
+
+下一步最小动作：
+
+- 等待用户审核独立 Demo。通过后再新建主页集成分支；当前分支不合入 `develop` 或 `main`。
+
+阻塞与证据：
+
+- 门禁阻塞：Demo 尚未获得用户确认，主页集成不允许开始。
+- Twemoji 署名与 CC BY 4.0 来源已保留；`D:\project\blog` 未修改。
