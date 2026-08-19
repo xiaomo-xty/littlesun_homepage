@@ -1,0 +1,391 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>俯视海豚概念 v4</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font-family: "Segoe UI", "Microsoft YaHei UI", sans-serif;
+        background: #06151f;
+        color: #eaf5f7;
+        --ink: #06151f;
+        --stage: #081c27;
+        --surface: #0c2532;
+        --line: #294958;
+        --muted: #8ba7b4;
+        --creature: #d8edf2;
+        --fin: #83c6da;
+        --detail: #1b4d61;
+        --control: #ed857b;
+      }
+
+      * { box-sizing: border-box; }
+
+      body {
+        min-width: 320px;
+        margin: 0;
+        background: var(--ink);
+      }
+
+      main {
+        width: min(100%, 1380px);
+        margin: 0 auto;
+        padding: 30px 40px 42px;
+      }
+
+      header {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(280px, 410px);
+        gap: 52px;
+        align-items: end;
+        padding-bottom: 24px;
+        border-bottom: 1px solid var(--line);
+      }
+
+      h1, h2, p { margin: 0; }
+
+      h1 {
+        max-width: 760px;
+        padding-bottom: 4px;
+        font-size: clamp(38px, 4.4vw, 64px);
+        font-weight: 660;
+        line-height: 1.08;
+      }
+
+      header p {
+        color: #b8ced6;
+        font-size: 14px;
+        line-height: 1.65;
+      }
+
+      .concept-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 1.6fr) minmax(340px, .72fr);
+        min-height: 520px;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .stage {
+        position: relative;
+        display: grid;
+        place-items: center;
+        min-width: 0;
+        overflow: hidden;
+        border-right: 1px solid var(--line);
+        background:
+          linear-gradient(90deg, rgb(105 177 207 / .038) 1px, transparent 1px),
+          linear-gradient(rgb(105 177 207 / .038) 1px, transparent 1px),
+          var(--stage);
+        background-size: 48px 48px;
+      }
+
+      .stage > svg {
+        width: min(94%, 930px);
+        height: auto;
+      }
+
+      .notes {
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        padding: 30px 32px 28px;
+        background: var(--surface);
+      }
+
+      .lead {
+        color: #c8dce3;
+        font-size: 17px;
+        line-height: 1.68;
+      }
+
+      .facts {
+        margin-top: 28px;
+        border-top: 1px solid var(--line);
+      }
+
+      .fact {
+        display: grid;
+        grid-template-columns: 88px 1fr;
+        gap: 16px;
+        padding: 15px 0;
+        border-bottom: 1px solid rgb(41 73 88 / .62);
+      }
+
+      .fact strong,
+      .mono {
+        color: var(--fin);
+        font: 600 11px/1.4 Consolas, "SFMono-Regular", monospace;
+      }
+
+      .fact span {
+        color: #aac1ca;
+        font-size: 13px;
+        line-height: 1.55;
+      }
+
+      .source {
+        margin-top: 26px;
+        color: #7895a2;
+        font: 10px/1.65 Consolas, "SFMono-Regular", monospace;
+      }
+
+      .turn-section {
+        padding: 24px 28px 20px;
+      }
+
+      .section-head {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 28px;
+        margin-bottom: 12px;
+      }
+
+      h2 {
+        font-size: 20px;
+        font-weight: 650;
+      }
+
+      .section-head p {
+        max-width: 580px;
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.55;
+        text-align: right;
+      }
+
+      .turn-section svg {
+        display: block;
+        width: 100%;
+        height: auto;
+        min-height: 300px;
+      }
+
+      .body-shape { fill: var(--creature); }
+      .fin-shape { fill: var(--fin); }
+      .blowhole { fill: var(--detail); }
+      .rig-line { fill: none; stroke: var(--control); stroke-width: 2; }
+      .rig-node { fill: var(--stage); stroke: var(--control); stroke-width: 2; }
+      .route { fill: none; stroke: #557785; stroke-width: 1.5; stroke-dasharray: 4 7; }
+      .pixel { fill: #5ca5c2; opacity: .6; }
+
+      @media (max-width: 900px) {
+        main { padding: 22px 18px 32px; }
+        header { grid-template-columns: 1fr; gap: 16px; }
+        .concept-grid { grid-template-columns: 1fr; }
+        .stage { min-height: 430px; border-right: 0; border-bottom: 1px solid var(--line); }
+        .notes { min-height: 430px; }
+        .section-head { display: block; }
+        .section-head p { margin-top: 8px; text-align: left; }
+      }
+
+      @media (max-width: 560px) {
+        h1 { font-size: 37px; }
+        .stage { min-height: 320px; }
+        .notes, .turn-section { padding: 22px 18px; }
+        .fact { grid-template-columns: 76px 1fr; gap: 12px; }
+        .turn-section svg { min-height: 0; }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1>俯视海豚</h1>
+        <p>先确认一眼可识别的俯视剪影，再验证脊柱链如何完成连续转向。本页没有动画，也不进入主页。</p>
+      </header>
+
+      <section class="concept-grid" aria-label="俯视海豚主造型">
+        <div class="stage">
+          <svg id="hero-dolphin" viewBox="0 0 940 500" role="img" aria-label="俯视海豚剪影，具有横向尾叶、成对胸鳍和呼吸孔">
+            <g fill="none" stroke="#244655" stroke-width="1.2" opacity=".82">
+              <path d="M20 108 C205 54 361 116 526 75 C682 37 806 79 922 50" />
+              <path d="M18 424 C194 381 368 438 534 394 C677 357 800 396 925 366" />
+            </g>
+            <g class="pixel">
+              <rect x="69" y="267" width="6" height="6" />
+              <rect x="166" y="91" width="4" height="4" />
+              <rect x="311" y="420" width="5" height="5" />
+              <rect x="706" y="77" width="7" height="7" />
+              <rect x="844" y="335" width="4" height="4" />
+            </g>
+            <g id="hero-creature"></g>
+            <g fill="#7897a5" font-family="Consolas, monospace" font-size="10">
+              <text x="80" y="465">TAIL FLUKES LIE IN THE VIEW PLANE</text>
+              <text x="669" y="458">TOP VIEW / NO MIRROR FLIP</text>
+            </g>
+          </svg>
+        </div>
+
+        <aside class="notes">
+          <div>
+            <p class="lead">俯视后，海豚最重要的结构会同时可见：横向尾叶、左右胸鳍、额隆与短吻，以及头顶呼吸孔。</p>
+            <div class="facts">
+              <div class="fact"><strong>剪影</strong><span>身体从头胸段平滑收束到尾柄，不画侧视背鳍。</span></div>
+              <div class="fact"><strong>尾叶</strong><span>与画面平面平行，转弯时跟随尾端局部切线旋转。</span></div>
+              <div class="fact"><strong>骨架</strong><span>9 个等距节点，轮廓宽度由各节点法线生成。</span></div>
+              <div class="fact"><strong>交互</strong><span>鼠标只改变局部转向力与斥力，不直接设置朝向。</span></div>
+            </div>
+          </div>
+          <p class="source">运动结构参考 argonautcode/animal-proc-anim 的 2D chain simulation。参考仓库采用 MIT License；此处重新设计海豚宽度分布、鳍和尾叶。</p>
+        </aside>
+      </section>
+
+      <section class="turn-section" aria-label="连续转向关键姿态">
+        <div class="section-head">
+          <h2>头部领弯，身体逐节跟随</h2>
+          <p>固定链节长度限制拉伸，相邻角度限制折叠。三幅姿态来自同一种俯视轮廓生成逻辑，没有贴图反转。</p>
+        </div>
+        <svg id="turn-study" viewBox="0 0 1180 340" role="img" aria-label="俯视海豚从直行到弯曲再完成反向游动的三幅连续姿态">
+          <path class="route" d="M93 93 C315 24 528 52 610 150 C687 242 886 298 1094 226" />
+          <g id="pose-one" opacity=".54"></g>
+          <g id="pose-two"></g>
+          <g id="pose-three" opacity=".72"></g>
+          <g id="pose-two-rig"></g>
+          <g fill="#809ca8" font-family="Consolas, monospace" font-size="10">
+            <text x="86" y="44">STRAIGHT</text>
+            <text x="487" y="41">ANGLE CONSTRAINT</text>
+            <text x="949" y="307">CONTINUOUS HEADING</text>
+          </g>
+        </svg>
+      </section>
+    </main>
+
+    <script>
+      const NS = "http://www.w3.org/2000/svg";
+      const widths = [43, 62, 70, 67, 58, 47, 34, 21, 10];
+
+      const add = (a, b) => ({ x: a.x + b.x, y: a.y + b.y });
+      const sub = (a, b) => ({ x: a.x - b.x, y: a.y - b.y });
+      const mul = (a, scalar) => ({ x: a.x * scalar, y: a.y * scalar });
+      const length = (a) => Math.hypot(a.x, a.y) || 1;
+      const unit = (a) => mul(a, 1 / length(a));
+      const normal = (a) => ({ x: -a.y, y: a.x });
+
+      function tangentAt(spine, index) {
+        if (index === 0) return unit(sub(spine[0], spine[1]));
+        if (index === spine.length - 1) return unit(sub(spine[index - 1], spine[index]));
+        return unit(sub(spine[index - 1], spine[index + 1]));
+      }
+
+      function smoothClosedPath(points) {
+        const midpoint = (a, b) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
+        const start = midpoint(points[points.length - 1], points[0]);
+        let d = `M ${start.x.toFixed(2)} ${start.y.toFixed(2)}`;
+        points.forEach((point, index) => {
+          const next = points[(index + 1) % points.length];
+          const mid = midpoint(point, next);
+          d += ` Q ${point.x.toFixed(2)} ${point.y.toFixed(2)} ${mid.x.toFixed(2)} ${mid.y.toFixed(2)}`;
+        });
+        return `${d} Z`;
+      }
+
+      function pathNode(d, className) {
+        const node = document.createElementNS(NS, "path");
+        node.setAttribute("d", d);
+        node.setAttribute("class", className);
+        return node;
+      }
+
+      function finPath(spine, index, side, scale) {
+        const point = spine[index];
+        const tangent = tangentAt(spine, index);
+        const sideNormal = mul(normal(tangent), side);
+        const root = add(point, mul(sideNormal, widths[index] * scale * .72));
+        const tip = add(add(point, mul(sideNormal, 96 * scale)), mul(tangent, -30 * scale));
+        const back = add(add(point, mul(sideNormal, widths[index] * scale * .48)), mul(tangent, -57 * scale));
+        const c1 = add(root, mul(sideNormal, 31 * scale));
+        const c2 = add(tip, mul(tangent, 24 * scale));
+        const c3 = add(tip, mul(tangent, -20 * scale));
+        return `M ${root.x} ${root.y} C ${c1.x} ${c1.y} ${c2.x} ${c2.y} ${tip.x} ${tip.y} C ${c3.x} ${c3.y} ${back.x} ${back.y} ${root.x} ${root.y} Z`;
+      }
+
+      function flukePath(spine, scale) {
+        const tail = spine[spine.length - 1];
+        const tangent = tangentAt(spine, spine.length - 1);
+        const side = normal(tangent);
+        const front = add(tail, mul(tangent, 12 * scale));
+        const upperTip = add(add(tail, mul(side, 70 * scale)), mul(tangent, -12 * scale));
+        const lowerTip = add(add(tail, mul(side, -70 * scale)), mul(tangent, -12 * scale));
+        const notch = add(tail, mul(tangent, -31 * scale));
+        const upperLead = add(add(tail, mul(side, 34 * scale)), mul(tangent, 3 * scale));
+        const upperBack = add(add(tail, mul(side, 39 * scale)), mul(tangent, -29 * scale));
+        const lowerBack = add(add(tail, mul(side, -39 * scale)), mul(tangent, -29 * scale));
+        const lowerLead = add(add(tail, mul(side, -34 * scale)), mul(tangent, 3 * scale));
+        return `M ${front.x} ${front.y} C ${upperLead.x} ${upperLead.y} ${upperTip.x} ${upperTip.y} ${upperTip.x} ${upperTip.y} C ${upperBack.x} ${upperBack.y} ${notch.x} ${notch.y} ${notch.x} ${notch.y} C ${lowerBack.x} ${lowerBack.y} ${lowerTip.x} ${lowerTip.y} ${lowerTip.x} ${lowerTip.y} C ${lowerLead.x} ${lowerLead.y} ${front.x} ${front.y} ${front.x} ${front.y} Z`;
+      }
+
+      function renderDolphin(groupId, rawSpine, scale = 1) {
+        const group = document.getElementById(groupId);
+        const spine = rawSpine.map(([x, y]) => ({ x, y }));
+        const tangents = spine.map((_, index) => tangentAt(spine, index));
+        const normals = tangents.map(normal);
+        const headTangent = tangents[0];
+        const headNormal = normals[0];
+        const nose = add(spine[0], mul(headTangent, 52 * scale));
+        const rostrumCenter = add(spine[0], mul(headTangent, 23 * scale));
+        const rostrumA = add(rostrumCenter, mul(headNormal, 13 * scale));
+        const rostrumB = add(rostrumCenter, mul(headNormal, -13 * scale));
+        const sideA = spine.map((point, index) => add(point, mul(normals[index], widths[index] * scale)));
+        const sideB = spine.map((point, index) => add(point, mul(normals[index], -widths[index] * scale))).reverse();
+        const bodyPoints = [nose, rostrumA, ...sideA, ...sideB, rostrumB];
+
+        group.append(pathNode(finPath(spine, 2, 1, scale), "fin-shape"));
+        group.append(pathNode(finPath(spine, 2, -1, scale), "fin-shape"));
+        group.append(pathNode(flukePath(spine, scale), "fin-shape"));
+        group.append(pathNode(smoothClosedPath(bodyPoints), "body-shape"));
+
+        const blowhole = document.createElementNS(NS, "ellipse");
+        const blowholeCenter = add(spine[0], mul(headTangent, -8 * scale));
+        const angle = Math.atan2(headTangent.y, headTangent.x) * 180 / Math.PI;
+        blowhole.setAttribute("cx", blowholeCenter.x);
+        blowhole.setAttribute("cy", blowholeCenter.y);
+        blowhole.setAttribute("rx", 7 * scale);
+        blowhole.setAttribute("ry", 3.4 * scale);
+        blowhole.setAttribute("transform", `rotate(${angle} ${blowholeCenter.x} ${blowholeCenter.y})`);
+        blowhole.setAttribute("class", "blowhole");
+        group.append(blowhole);
+        return spine;
+      }
+
+      function renderRig(groupId, spine) {
+        const group = document.getElementById(groupId);
+        const polyline = document.createElementNS(NS, "polyline");
+        polyline.setAttribute("points", spine.map((point) => `${point.x},${point.y}`).join(" "));
+        polyline.setAttribute("class", "rig-line");
+        group.append(polyline);
+        spine.forEach((point, index) => {
+          const node = document.createElementNS(NS, "circle");
+          node.setAttribute("cx", point.x);
+          node.setAttribute("cy", point.y);
+          node.setAttribute("r", index === 0 ? 5 : 3.6);
+          node.setAttribute("class", "rig-node");
+          group.append(node);
+        });
+      }
+
+      renderDolphin("hero-creature", [
+        [704, 247], [647, 247], [590, 247], [533, 247], [476, 247],
+        [419, 247], [362, 247], [305, 247], [250, 247]
+      ], 1.18);
+
+      renderDolphin("pose-one", [
+        [313, 91], [279, 91], [245, 91], [211, 91], [177, 91],
+        [143, 91], [109, 91], [75, 91], [42, 91]
+      ], .5);
+
+      const middleSpine = renderDolphin("pose-two", [
+        [640, 146], [607, 140], [575, 145], [546, 161], [525, 186],
+        [517, 217], [522, 248], [538, 276], [564, 296]
+      ], .52);
+      renderRig("pose-two-rig", middleSpine);
+
+      renderDolphin("pose-three", [
+        [865, 247], [898, 247], [931, 240], [960, 224], [981, 199],
+        [990, 169], [986, 139], [970, 113], [946, 94]
+      ], .5);
+    </script>
+  </body>
+</html>
