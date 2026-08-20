@@ -175,6 +175,40 @@ export default function CreatureDemo() {
 
     let destroyed = false;
     let cleanupScene: (() => void) | undefined;
+    const searchParams = new URLSearchParams(window.location.search);
+    const debugEnabled = searchParams.get("debug") === "1";
+    const diagnostics = host.querySelector<HTMLElement>("[data-diagnostics]");
+    const diagnosticLines: string[] = [];
+    const diagnosticStart = performance.now();
+    const describeError = (error: unknown) => error instanceof Error
+      ? `${error.name}: ${error.message}`
+      : String(error);
+    const logDiagnostic = (stage: string, details: Record<string, unknown> = {}) => {
+      host.dataset.stage = stage;
+      if (!debugEnabled) return;
+      const elapsed = `${((performance.now() - diagnosticStart) / 1000).toFixed(2)}s`;
+      const detailText = Object.keys(details).length > 0 ? ` ${JSON.stringify(details)}` : "";
+      const line = `${elapsed} ${stage}${detailText}`;
+      diagnosticLines.push(line);
+      if (diagnosticLines.length > 18) diagnosticLines.shift();
+      if (diagnostics) {
+        diagnostics.textContent = diagnosticLines.join("\n");
+        diagnostics.scrollTop = diagnostics.scrollHeight;
+      }
+      if (stage.includes("error") || stage.includes("fatal") || stage.includes("timeout")) {
+        console.error(`[CreatureDemo] ${line}`);
+      } else {
+        console.info(`[CreatureDemo] ${line}`);
+      }
+    };
+
+    host.dataset.debug = debugEnabled ? "true" : "false";
+    logDiagnostic("boot", {
+      hidden: document.hidden,
+      secureContext: window.isSecureContext,
+      webGPU: "gpu" in navigator,
+      hardwareConcurrency: navigator.hardwareConcurrency || "unknown",
+    });
 
     const initialize = async () => {
       const resources = new Set<Disposable>();
@@ -185,18 +219,24 @@ export default function CreatureDemo() {
       const random = seededRandom(20260820);
       const mobile = window.matchMedia("(max-width: 767px)").matches;
       const lowPower = (navigator.hardwareConcurrency || 8) <= 4;
-      const searchParams = new URLSearchParams(window.location.search);
       const requestedBackend = searchParams.get("backend");
       const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches
         && searchParams.get("motion") !== "full";
       pausedRef.current = reduceMotion;
       setPaused(reduceMotion);
       host.dataset.motion = reduceMotion ? "reduced" : "full";
+      logDiagnostic("settings", {
+        requestedBackend: requestedBackend || "auto",
+        motion: reduceMotion ? "reduced" : "full",
+        mobile,
+        lowPower,
+      });
       if (requestedBackend === "static") {
         host.dataset.status = "fallback";
         host.dataset.backend = "static";
         setBackend("static");
         setStatus("fallback");
+        logDiagnostic("renderer:static", { reason: "requested" });
         return;
       }
 
@@ -204,6 +244,9 @@ export default function CreatureDemo() {
       const forceWebGL = requestedBackend === "webgl2" || !webGPUAvailable;
       const initializeRenderer = async (useWebGL: boolean) => {
         const useBalancedQuality = mobile || lowPower || useWebGL;
+        const candidateBackend = useWebGL ? "webgl2" : "webgpu";
+        const rendererStart = performance.now();
+        logDiagnostic("renderer:init:start", { backend: candidateBackend });
         const candidate = new THREE.WebGPURenderer({
           canvas,
           antialias: !useBalancedQuality,
@@ -218,11 +261,22 @@ export default function CreatureDemo() {
           await Promise.race([
             candidate.init(),
             new Promise<never>((_, reject) => {
-              timeout = window.setTimeout(() => reject(new Error("Renderer initialization timed out")), 5000);
+              timeout = window.setTimeout(() => {
+                logDiagnostic("renderer:init:timeout", { backend: candidateBackend, limitMs: 5000 });
+                reject(new Error("Renderer initialization timed out"));
+              }, 5000);
             }),
           ]);
+          logDiagnostic("renderer:init:ready", {
+            backend: candidateBackend,
+            durationMs: Math.round(performance.now() - rendererStart),
+          });
           return candidate;
         } catch (error) {
+          logDiagnostic("renderer:init:error", {
+            backend: candidateBackend,
+            error: describeError(error),
+          });
           candidate.dispose();
           throw error;
         } finally {
@@ -240,12 +294,14 @@ export default function CreatureDemo() {
             host.dataset.status = "fallback";
             setBackend("static");
             setStatus("fallback");
+            logDiagnostic("renderer:static", { reason: "webgl2-init" });
           }
           return;
         }
 
         selectedForceWebGL = true;
         host.dataset.fallbackReason = "webgpu-init";
+        logDiagnostic("renderer:fallback", { from: "webgpu", to: "webgl2" });
         try {
           renderer = await initializeRenderer(true);
         } catch {
@@ -253,6 +309,7 @@ export default function CreatureDemo() {
             host.dataset.status = "fallback";
             setBackend("static");
             setStatus("fallback");
+            logDiagnostic("renderer:static", { reason: "webgl2-init" });
           }
           return;
         }
@@ -270,6 +327,7 @@ export default function CreatureDemo() {
       host.dataset.backend = backendName;
       host.dataset.creature = "same-side-dolphin";
       setBackend(backendName);
+      logDiagnostic("scene:build:start", { backend: backendName, balanced });
 
       const scene = new THREE.Scene();
       const camera = new THREE.OrthographicCamera(-8, 8, 5, -5, 0.1, 30);
@@ -282,6 +340,9 @@ export default function CreatureDemo() {
       let viewHalfWidth = 8;
       const viewHalfHeight = 5;
       let frame = 0;
+      let renderedFrames = 0;
+      let lastHeartbeat = 0;
+      let hiddenLogged = false;
       let lastTime = performance.now();
       let activeTheme = themeRef.current;
       let activeRoute = routeRef.current;
@@ -814,30 +875,56 @@ export default function CreatureDemo() {
         if (destroyed) return;
         frame = window.requestAnimationFrame(render);
         if (document.hidden) {
+          if (!hiddenLogged) logDiagnostic("loop:hidden");
+          hiddenLogged = true;
           lastTime = time;
           return;
         }
-        const delta = Math.min(0.04, Math.max(0.001, (time - lastTime) / 1000));
-        lastTime = time;
-        if (activeTheme !== themeRef.current) applyPalette();
-        if (activeRoute !== routeRef.current) {
-          activeRoute = routeRef.current;
-          resetSimulation();
+        if (hiddenLogged) logDiagnostic("loop:visible");
+        hiddenLogged = false;
+
+        try {
+          const delta = Math.min(0.04, Math.max(0.001, (time - lastTime) / 1000));
+          lastTime = time;
+          if (activeTheme !== themeRef.current) applyPalette();
+          if (activeRoute !== routeRef.current) {
+            activeRoute = routeRef.current;
+            resetSimulation();
+          }
+          if (resetVersion !== resetVersionRef.current) {
+            resetVersion = resetVersionRef.current;
+            resetSimulation();
+          }
+          pointer.speed *= Math.exp(-3.2 * delta);
+          pulse *= Math.exp(-2.8 * delta);
+          updatePointerWorld();
+          if (!pausedRef.current) {
+            updateFlowLines(time);
+            updateDolphin(delta);
+            updateJellies(time, delta);
+            updateParticles(time, delta);
+          }
+          renderer.render(scene, camera);
+          renderedFrames += 1;
+          if (renderedFrames === 1) {
+            logDiagnostic("frame:first", { backend: backendName, paused: pausedRef.current });
+          }
+          if (debugEnabled && time - lastHeartbeat >= 2000) {
+            lastHeartbeat = time;
+            logDiagnostic("frame:heartbeat", {
+              frames: renderedFrames,
+              route: activeRoute,
+              phase: Number(routePhase.toFixed(3)),
+              paused: pausedRef.current,
+            });
+          }
+        } catch (error) {
+          window.cancelAnimationFrame(frame);
+          logDiagnostic("frame:fatal", { error: describeError(error), frame: renderedFrames });
+          host.dataset.status = "fallback";
+          setBackend("static");
+          setStatus("fallback");
         }
-        if (resetVersion !== resetVersionRef.current) {
-          resetVersion = resetVersionRef.current;
-          resetSimulation();
-        }
-        pointer.speed *= Math.exp(-3.2 * delta);
-        pulse *= Math.exp(-2.8 * delta);
-        updatePointerWorld();
-        if (!pausedRef.current) {
-          updateFlowLines(time);
-          updateDolphin(delta);
-          updateJellies(time, delta);
-          updateParticles(time, delta);
-        }
-        renderer.render(scene, camera);
       };
 
       const ensureRunning = () => {
@@ -897,6 +984,11 @@ export default function CreatureDemo() {
       updateParticles(initialTime, 0);
       host.dataset.status = "ready";
       setStatus("ready");
+      logDiagnostic("scene:ready", {
+        backend: backendName,
+        particles: particleCount,
+        jellies: jellies.length,
+      });
       ensureRunning();
 
       cleanupScene = () => {
@@ -912,7 +1004,14 @@ export default function CreatureDemo() {
       };
     };
 
-    void initialize();
+    void initialize().catch((error) => {
+      if (destroyed) return;
+      logDiagnostic("initialize:fatal", { error: describeError(error) });
+      host.dataset.status = "fallback";
+      host.dataset.backend = "static";
+      setBackend("static");
+      setStatus("fallback");
+    });
 
     return () => {
       destroyed = true;
@@ -955,6 +1054,7 @@ export default function CreatureDemo() {
           <path className="creature-demo-static-mouth" d="M.38.065C.3.085.18.11.06.115" />
         </svg>
         <div className="creature-demo-post" aria-hidden="true"></div>
+        <pre className="creature-demo-diagnostics" data-diagnostics aria-live="polite"></pre>
       </div>
 
       <header className="creature-demo-header">

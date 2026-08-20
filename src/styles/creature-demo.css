@@ -111,6 +111,31 @@
   pointer-events: none;
 }
 
+.creature-demo-diagnostics {
+  position: fixed;
+  z-index: 5;
+  right: 18px;
+  bottom: 62px;
+  display: none;
+  width: min(620px, calc(100vw - 36px));
+  max-height: min(42vh, 340px);
+  margin: 0;
+  padding: 12px 14px;
+  overflow: auto;
+  border: 1px solid rgb(126 190 218 / 0.34);
+  background: rgb(3 13 20 / 0.9);
+  color: #d9f4ff;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  pointer-events: none;
+}
+
+.creature-demo-world[data-debug="true"] .creature-demo-diagnostics {
+  display: block;
+}
+
 .creature-demo[data-theme="light"] .creature-demo-post {
   background:
     linear-gradient(rgb(248 250 248 / 0.02), rgb(248 250 248 / 0.07)),
@@ -291,6 +316,14 @@
     bottom: 18px;
     left: 18px;
     justify-content: center;
+  }
+
+  .creature-demo-diagnostics {
+    right: 12px;
+    bottom: 112px;
+    width: calc(100vw - 24px);
+    max-height: 34vh;
+    font-size: 10px;
   }
 
 }
