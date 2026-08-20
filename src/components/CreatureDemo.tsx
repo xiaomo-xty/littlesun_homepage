@@ -184,9 +184,14 @@ export default function CreatureDemo() {
       };
       const random = seededRandom(20260820);
       const mobile = window.matchMedia("(max-width: 767px)").matches;
-      const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
       const lowPower = (navigator.hardwareConcurrency || 8) <= 4;
-      const requestedBackend = new URLSearchParams(window.location.search).get("backend");
+      const searchParams = new URLSearchParams(window.location.search);
+      const requestedBackend = searchParams.get("backend");
+      const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches
+        && searchParams.get("motion") !== "full";
+      pausedRef.current = reduceMotion;
+      setPaused(reduceMotion);
+      host.dataset.motion = reduceMotion ? "reduced" : "full";
       if (requestedBackend === "static") {
         host.dataset.status = "fallback";
         host.dataset.backend = "static";
@@ -242,7 +247,6 @@ export default function CreatureDemo() {
       const viewHalfHeight = 5;
       let frame = 0;
       let lastTime = performance.now();
-      let pageVisible = !document.hidden;
       let activeTheme = themeRef.current;
       let activeRoute = routeRef.current;
       let resetVersion = resetVersionRef.current;
@@ -771,7 +775,12 @@ export default function CreatureDemo() {
       };
 
       const render = (time: number) => {
-        if (destroyed || !pageVisible) return;
+        if (destroyed) return;
+        frame = window.requestAnimationFrame(render);
+        if (document.hidden) {
+          lastTime = time;
+          return;
+        }
         const delta = Math.min(0.04, Math.max(0.001, (time - lastTime) / 1000));
         lastTime = time;
         if (activeTheme !== themeRef.current) applyPalette();
@@ -786,19 +795,18 @@ export default function CreatureDemo() {
         pointer.speed *= Math.exp(-3.2 * delta);
         pulse *= Math.exp(-2.8 * delta);
         updatePointerWorld();
-        if (!pausedRef.current && !reduceMotion) {
+        if (!pausedRef.current) {
           updateFlowLines(time);
           updateDolphin(delta);
           updateJellies(time, delta);
           updateParticles(time, delta);
         }
         renderer.render(scene, camera);
-        frame = window.requestAnimationFrame(render);
       };
 
       const ensureRunning = () => {
         window.cancelAnimationFrame(frame);
-        if (!pageVisible || destroyed) return;
+        if (destroyed) return;
         lastTime = performance.now();
         frame = window.requestAnimationFrame(render);
       };
@@ -834,7 +842,6 @@ export default function CreatureDemo() {
       };
 
       const handleVisibility = () => {
-        pageVisible = !document.hidden;
         ensureRunning();
       };
 
@@ -877,7 +884,10 @@ export default function CreatureDemo() {
     };
   }, []);
 
-  const togglePaused = () => setPaused((value) => !value);
+  const togglePaused = () => setPaused((value) => {
+    pausedRef.current = !value;
+    return !value;
+  });
   const toggleTheme = () => setTheme((value) => value === "dark" ? "light" : "dark");
   const selectRoute = (nextRoute: DolphinRoute) => {
     routeRef.current = nextRoute;
@@ -885,6 +895,7 @@ export default function CreatureDemo() {
   };
   const reset = () => {
     resetVersionRef.current += 1;
+    pausedRef.current = false;
     setPaused(false);
   };
 
