@@ -693,3 +693,24 @@
 阻塞与证据：
 
 - `AmbientWorld.tsx` 和 `D:\project\blog` 均未修改。
+
+## 2026-08-21 / v0.6 Renderer Initialization Fallback
+
+今天完成：
+
+- 根据用户截图确认 Demo 停在 `INITIALIZING / LOADING`，动画模拟尚未开始，排除路径和骨架更新问题。
+- 为 Three.js WebGPU renderer 初始化增加 5 秒上限，避免浏览器声明 WebGPU 后在设备或适配器申请阶段无限等待。
+- WebGPU 初始化超时或失败时自动创建 WebGL2 renderer；仅当 WebGL2 同样失败时进入静态兜底。
+- 自动降级后同步启用平衡档 DPR、抗锯齿和场景资源预算，并通过 `data-fallback-reason="webgpu-init"` 暴露原因。
+
+当前现象：
+
+- 开发服务器持续监听 `127.0.0.1:4333`，页面请求正常；此前永久 loading 的客户端路径已有确定退出条件。
+
+下一步最小动作：
+
+- 刷新 `/labs/space-ocean-demo/?motion=full`，确认状态在 5 秒内进入 `webgpu / ready` 或 `webgl2 / ready`。
+
+阻塞与证据：
+
+- `AmbientWorld.tsx` 和 `D:\project\blog` 均未修改。

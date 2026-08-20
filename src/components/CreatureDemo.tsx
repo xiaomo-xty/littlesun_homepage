@@ -202,32 +202,68 @@ export default function CreatureDemo() {
 
       const webGPUAvailable = window.isSecureContext && "gpu" in navigator;
       const forceWebGL = requestedBackend === "webgl2" || !webGPUAvailable;
-      const balanced = mobile || lowPower || forceWebGL;
-      const renderer = new THREE.WebGPURenderer({
-        canvas,
-        antialias: !balanced,
-        forceWebGL,
-        powerPreference: balanced ? "low-power" : "high-performance",
-      });
+      const initializeRenderer = async (useWebGL: boolean) => {
+        const useBalancedQuality = mobile || lowPower || useWebGL;
+        const candidate = new THREE.WebGPURenderer({
+          canvas,
+          antialias: !useBalancedQuality,
+          forceWebGL: useWebGL,
+          powerPreference: useBalancedQuality ? "low-power" : "high-performance",
+        });
+        let timeout = 0;
 
-      try {
-        renderer.outputColorSpace = THREE.SRGBColorSpace;
-        renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, balanced ? 1.15 : 1.5));
-        await renderer.init();
-      } catch {
-        renderer.dispose();
-        if (!destroyed) {
-          host.dataset.status = "fallback";
-          setBackend("static");
-          setStatus("fallback");
+        try {
+          candidate.outputColorSpace = THREE.SRGBColorSpace;
+          candidate.setPixelRatio(Math.min(window.devicePixelRatio || 1, useBalancedQuality ? 1.15 : 1.5));
+          await Promise.race([
+            candidate.init(),
+            new Promise<never>((_, reject) => {
+              timeout = window.setTimeout(() => reject(new Error("Renderer initialization timed out")), 5000);
+            }),
+          ]);
+          return candidate;
+        } catch (error) {
+          candidate.dispose();
+          throw error;
+        } finally {
+          window.clearTimeout(timeout);
         }
-        return;
+      };
+
+      let renderer: THREE.WebGPURenderer;
+      let selectedForceWebGL = forceWebGL;
+      try {
+        renderer = await initializeRenderer(selectedForceWebGL);
+      } catch {
+        if (destroyed || selectedForceWebGL) {
+          if (!destroyed) {
+            host.dataset.status = "fallback";
+            setBackend("static");
+            setStatus("fallback");
+          }
+          return;
+        }
+
+        selectedForceWebGL = true;
+        host.dataset.fallbackReason = "webgpu-init";
+        try {
+          renderer = await initializeRenderer(true);
+        } catch {
+          if (!destroyed) {
+            host.dataset.status = "fallback";
+            setBackend("static");
+            setStatus("fallback");
+          }
+          return;
+        }
       }
 
       if (destroyed) {
         renderer.dispose();
         return;
       }
+
+      const balanced = mobile || lowPower || selectedForceWebGL;
 
       const backendFlags = renderer.backend as BackendFlags;
       const backendName = backendFlags.isWebGPUBackend ? "webgpu" : backendFlags.isWebGLBackend ? "webgl2" : "static";
