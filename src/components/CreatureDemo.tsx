@@ -12,6 +12,7 @@ import {
   advanceDolphinRoutePhase,
   advanceDolphinSpine,
   advanceRepulsionOffset,
+  calculateSimulationSubsteps,
   createDolphinSpine,
   sampleDolphinRoutePhase,
   sampleSpineFrame,
@@ -349,6 +350,7 @@ export default function CreatureDemo() {
       let resetVersion = resetVersionRef.current;
       let routePhase = 0;
       let swimClock = 0;
+      let simulationClock = 0;
       let pulse = 0;
       let dolphinScale = mobile ? 0.56 : 0.9;
       let dolphinSpine: DolphinSpinePoint[] = createDolphinSpine({ x: 0, y: 0 }, 0, dolphinScale);
@@ -668,6 +670,7 @@ export default function CreatureDemo() {
       const resetSimulation = () => {
         routePhase = 0;
         swimClock = 0;
+        simulationClock = 0;
         repulsionOffset.x = 0;
         repulsionOffset.y = 0;
         repulsionOffset.vx = 0;
@@ -718,7 +721,7 @@ export default function CreatureDemo() {
         });
       };
 
-      const updateDolphin = (delta: number) => {
+      const simulateDolphin = (delta: number) => {
         swimClock += delta;
         const radiusX = Math.max(0.65, Math.min(4.2, viewHalfWidth - DOLPHIN_BODY_LENGTH * dolphinScale * 0.72));
         const radiusY = mobile ? 1.25 : 1.55;
@@ -753,13 +756,15 @@ export default function CreatureDemo() {
           delta,
           dolphinScale,
         );
+      };
+
+      const renderDolphin = () => {
         const headFrame = sampleSpineFrame(dolphinSpine, 0);
         dolphinForward.set(headFrame.tangent.x, headFrame.tangent.y);
         updateDolphinGeometry();
       };
 
-      const updateJellies = (time: number, delta: number) => {
-        const seconds = time * 0.001;
+      const simulateJellies = (seconds: number, delta: number) => {
         jellies.forEach((jelly) => {
           sampleOceanFlow(jelly, seconds + jelly.phase, flowForce);
           jelly.vx += flowForce.x * delta * 0.1;
@@ -794,6 +799,15 @@ export default function CreatureDemo() {
           }
           if (wrapped) resetTentacles(jelly);
 
+          jelly.tentacles.forEach((tentacle) => {
+            const anchor = { x: tentacle.offset, y: -0.03 };
+            advanceRibbonChain(tentacle.points, anchor, delta, 0.16, 20, 6.4);
+          });
+        });
+      };
+
+      const renderJellies = (seconds: number) => {
+        jellies.forEach((jelly) => {
           const breath = Math.sin(seconds * 1.45 + jelly.phase);
           const scaleX = jelly.scale * (1 + breath * 0.08);
           const scaleY = jelly.scale * (1 - breath * 0.12);
@@ -804,8 +818,6 @@ export default function CreatureDemo() {
           jelly.edge.opacity = activeTheme === "dark" ? 0.72 : 0.6;
 
           jelly.tentacles.forEach((tentacle, tentacleIndex) => {
-            const anchor = { x: tentacle.offset, y: -0.03 };
-            advanceRibbonChain(tentacle.points, anchor, delta, 0.16, 20, 6.4);
             tentacle.points.forEach((point, pointIndex) => {
               const offset = pointIndex * 3;
               const trail = pointIndex / Math.max(1, tentacle.points.length - 1);
@@ -820,9 +832,8 @@ export default function CreatureDemo() {
         });
       };
 
-      const updateParticles = (time: number, delta: number) => {
-        const seconds = time * 0.001;
-        particles.forEach((particle, index) => {
+      const simulateParticles = (seconds: number, delta: number) => {
+        particles.forEach((particle) => {
           particle.vx *= Math.exp(-2.1 * delta);
           particle.vy *= Math.exp(-2.1 * delta);
           if (pointer.active) {
@@ -853,7 +864,11 @@ export default function CreatureDemo() {
           }
           if (particle.x < -viewHalfWidth - 0.4) particle.x = viewHalfWidth + 0.4;
           if (particle.x > viewHalfWidth + 0.4) particle.x = -viewHalfWidth - 0.4;
+        });
+      };
 
+      const renderParticles = (seconds: number) => {
+        particles.forEach((particle, index) => {
           const twinkle = 0.66 + Math.sin(seconds * (0.78 + particle.speed) + particle.phase) * 0.32;
           const scale = particle.size * twinkle;
           sharedMatrix.makeScale(scale, scale, scale);
@@ -884,7 +899,7 @@ export default function CreatureDemo() {
         hiddenLogged = false;
 
         try {
-          const delta = Math.min(0.04, Math.max(0.001, (time - lastTime) / 1000));
+          const frameDelta = Math.max(0, (time - lastTime) / 1000);
           lastTime = time;
           if (activeTheme !== themeRef.current) applyPalette();
           if (activeRoute !== routeRef.current) {
@@ -895,14 +910,21 @@ export default function CreatureDemo() {
             resetVersion = resetVersionRef.current;
             resetSimulation();
           }
-          pointer.speed *= Math.exp(-3.2 * delta);
-          pulse *= Math.exp(-2.8 * delta);
+          const substeps = calculateSimulationSubsteps(frameDelta);
+          pointer.speed *= Math.exp(-3.2 * substeps.simulatedDelta);
+          pulse *= Math.exp(-2.8 * substeps.simulatedDelta);
           updatePointerWorld();
           if (!pausedRef.current) {
-            updateFlowLines(time);
-            updateDolphin(delta);
-            updateJellies(time, delta);
-            updateParticles(time, delta);
+            for (let step = 0; step < substeps.count; step += 1) {
+              simulationClock += substeps.delta;
+              simulateDolphin(substeps.delta);
+              simulateJellies(simulationClock, substeps.delta);
+              simulateParticles(simulationClock, substeps.delta);
+            }
+            updateFlowLines(simulationClock * 1000);
+            renderDolphin();
+            renderJellies(simulationClock);
+            renderParticles(simulationClock);
           }
           renderer.render(scene, camera);
           renderedFrames += 1;
@@ -978,10 +1000,10 @@ export default function CreatureDemo() {
       applyPalette();
       resize();
       resetSimulation();
-      const initialTime = performance.now();
-      updateFlowLines(initialTime);
-      updateJellies(initialTime, 1 / 60);
-      updateParticles(initialTime, 0);
+      updateFlowLines(0);
+      renderDolphin();
+      renderJellies(0);
+      renderParticles(0);
       host.dataset.status = "ready";
       setStatus("ready");
       logDiagnostic("scene:ready", {

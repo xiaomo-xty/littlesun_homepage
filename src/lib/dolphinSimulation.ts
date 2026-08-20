@@ -21,6 +21,8 @@ export type RepulsionState = Vec2 & {
 export const DOLPHIN_JOINT_LENGTHS = [0.43, 0.48, 0.5, 0.48, 0.43, 0.37, 0.31] as const;
 export const DOLPHIN_MAX_BENDS = [0.12, 0.14, 0.17, 0.22, 0.3, 0.4, 0.52] as const;
 export const DOLPHIN_BODY_LENGTH = DOLPHIN_JOINT_LENGTHS.reduce((sum, length) => sum + length, 0);
+export const DOLPHIN_SIMULATION_STEP = 1 / 120;
+export const DOLPHIN_MAX_SUBSTEPS = 5;
 
 function clamp(value: number, minimum: number, maximum: number) {
   return Math.max(minimum, Math.min(maximum, value));
@@ -37,6 +39,23 @@ export function shortestAngleDelta(from: number, to: number) {
 export function rotateAngleTowards(current: number, target: number, maximumStep: number) {
   const delta = shortestAngleDelta(current, target);
   return current + clamp(delta, -maximumStep, maximumStep);
+}
+
+export function calculateSimulationSubsteps(
+  delta: number,
+  maximumStep = DOLPHIN_SIMULATION_STEP,
+  maximumSubsteps = DOLPHIN_MAX_SUBSTEPS,
+) {
+  const safeMaximumStep = Math.max(0.0001, maximumStep);
+  const safeMaximumSubsteps = Math.max(1, Math.floor(maximumSubsteps));
+  const simulatedDelta = clamp(delta, 0, safeMaximumStep * safeMaximumSubsteps);
+  if (simulatedDelta === 0) return { count: 0, delta: 0, simulatedDelta: 0 };
+  const count = Math.min(safeMaximumSubsteps, Math.ceil(simulatedDelta / safeMaximumStep));
+  return {
+    count,
+    delta: simulatedDelta / count,
+    simulatedDelta,
+  };
 }
 
 export function createDolphinSpine(

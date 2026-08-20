@@ -4,6 +4,7 @@ import {
   DOLPHIN_MAX_BENDS,
   advanceDolphinRoutePhase,
   advanceDolphinSpine,
+  calculateSimulationSubsteps,
   createDolphinSpine,
   rotateAngleTowards,
   sampleDolphinRoute,
@@ -12,6 +13,34 @@ import {
 } from "../src/lib/dolphinSimulation";
 
 describe("procedural dolphin simulation", () => {
+  const simulateAtFrameRate = (framesPerSecond: number, duration: number) => {
+    const radiusX = 4.2;
+    const radiusY = 1.55;
+    const scale = 0.9;
+    const frameDelta = 1 / framesPerSecond;
+    let phase = 0;
+    let clock = 0;
+    let spine = createDolphinSpine({ x: 0, y: 0 }, 0, scale);
+
+    for (let frame = 0; frame < framesPerSecond * duration; frame += 1) {
+      const substeps = calculateSimulationSubsteps(frameDelta);
+      for (let step = 0; step < substeps.count; step += 1) {
+        clock += substeps.delta;
+        phase = advanceDolphinRoutePhase(
+          phase,
+          "figure8",
+          radiusX,
+          radiusY,
+          1.08 * substeps.delta,
+        );
+        const route = sampleDolphinRoutePhase(phase, "figure8", radiusX, radiusY);
+        advanceDolphinSpine(spine, route.position, clock, substeps.delta, scale);
+      }
+    }
+
+    return { phase, spine };
+  };
+
   test("spine solver preserves every joint length", () => {
     const scale = 0.84;
     const spine = createDolphinSpine({ x: 0, y: 0 }, 0.3, scale);
@@ -99,5 +128,57 @@ describe("procedural dolphin simulation", () => {
     const next = rotateAngleTowards(current, target, 0.015);
     expect(shortestAngleDelta(current, next)).toBeCloseTo(0.015, 6);
     expect(Math.abs(shortestAngleDelta(next, target))).toBeLessThan(0.05);
+  });
+
+  test("fixed substeps keep the same motion at 30, 60, and 120 fps", () => {
+    const at30 = simulateAtFrameRate(30, 8);
+    const at60 = simulateAtFrameRate(60, 8);
+    const at120 = simulateAtFrameRate(120, 8);
+
+    expect(at30.phase).toBeCloseTo(at120.phase, 10);
+    expect(at60.phase).toBeCloseTo(at120.phase, 10);
+    at120.spine.forEach((point, index) => {
+      expect(at30.spine[index].x).toBeCloseTo(point.x, 9);
+      expect(at30.spine[index].y).toBeCloseTo(point.y, 9);
+      expect(at60.spine[index].x).toBeCloseTo(point.x, 9);
+      expect(at60.spine[index].y).toBeCloseTo(point.y, 9);
+    });
+  });
+
+  test("substepping bounds visible joint-angle changes at 30 fps", () => {
+    const radiusX = 4.2;
+    const radiusY = 1.55;
+    const scale = 0.9;
+    let phase = 0;
+    let clock = 0;
+    const spine = createDolphinSpine({ x: 0, y: 0 }, 0, scale);
+    let previousAngles = spine.slice(1).map((point, index) => Math.atan2(
+      point.y - spine[index].y,
+      point.x - spine[index].x,
+    ));
+    let maximumFrameChange = 0;
+
+    for (let frame = 0; frame < 30 * 12; frame += 1) {
+      const substeps = calculateSimulationSubsteps(1 / 30);
+      for (let step = 0; step < substeps.count; step += 1) {
+        clock += substeps.delta;
+        phase = advanceDolphinRoutePhase(phase, "figure8", radiusX, radiusY, 1.08 * substeps.delta);
+        const route = sampleDolphinRoutePhase(phase, "figure8", radiusX, radiusY);
+        advanceDolphinSpine(spine, route.position, clock, substeps.delta, scale);
+      }
+      const nextAngles = spine.slice(1).map((point, index) => Math.atan2(
+        point.y - spine[index].y,
+        point.x - spine[index].x,
+      ));
+      nextAngles.forEach((angle, index) => {
+        maximumFrameChange = Math.max(
+          maximumFrameChange,
+          Math.abs(shortestAngleDelta(previousAngles[index], angle)),
+        );
+      });
+      previousAngles = nextAngles;
+    }
+
+    expect(maximumFrameChange).toBeLessThan(0.14);
   });
 });
