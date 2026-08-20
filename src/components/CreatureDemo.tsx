@@ -9,11 +9,11 @@ import { useEffect, useRef, useState } from "react";
 import * as THREE from "three/webgpu";
 import {
   DOLPHIN_BODY_LENGTH,
+  advanceDolphinRoutePhase,
   advanceDolphinSpine,
   advanceRepulsionOffset,
   createDolphinSpine,
-  rotateAngleTowards,
-  sampleDolphinRoute,
+  sampleDolphinRoutePhase,
   sampleSpineFrame,
   type DolphinRoute,
   type DolphinSpinePoint,
@@ -246,12 +246,13 @@ export default function CreatureDemo() {
       let activeTheme = themeRef.current;
       let activeRoute = routeRef.current;
       let resetVersion = resetVersionRef.current;
-      let routeClock = 0;
+      let routePhase = 0;
+      let swimClock = 0;
       let pulse = 0;
       let dolphinScale = mobile ? 0.56 : 0.9;
-      let dolphinHeading = 0;
       let dolphinSpine: DolphinSpinePoint[] = createDolphinSpine({ x: 0, y: 0 }, 0, dolphinScale);
       const dolphinHead = new THREE.Vector2();
+      const dolphinForward = new THREE.Vector2(1, 0);
       const pulseOrigin = new THREE.Vector2();
       const repulsionOffset: RepulsionState = { x: 0, y: 0, vx: 0, vy: 0 };
 
@@ -564,16 +565,17 @@ export default function CreatureDemo() {
       };
 
       const resetSimulation = () => {
-        routeClock = 0;
+        routePhase = 0;
+        swimClock = 0;
         repulsionOffset.x = 0;
         repulsionOffset.y = 0;
         repulsionOffset.vx = 0;
         repulsionOffset.vy = 0;
         const radiusX = Math.max(0.65, Math.min(4.2, viewHalfWidth - DOLPHIN_BODY_LENGTH * dolphinScale * 0.72));
-        const routeSample = sampleDolphinRoute(0, routeRef.current, radiusX, mobile ? 1.25 : 1.55);
-        dolphinHeading = routeSample.heading;
+        const routeSample = sampleDolphinRoutePhase(0, routeRef.current, radiusX, mobile ? 1.25 : 1.55);
         dolphinHead.set(routeSample.position.x, routeSample.position.y + (mobile ? -0.2 : -0.45));
-        dolphinSpine = createDolphinSpine(dolphinHead, dolphinHeading, dolphinScale);
+        dolphinSpine = createDolphinSpine(dolphinHead, routeSample.heading, dolphinScale);
+        dolphinForward.set(Math.cos(routeSample.heading), Math.sin(routeSample.heading));
         updateDolphinGeometry();
         jellies.forEach((jelly, index) => {
           jelly.x = [-3.8, 3.35, 1.1][index] || 0;
@@ -616,10 +618,17 @@ export default function CreatureDemo() {
       };
 
       const updateDolphin = (delta: number) => {
-        routeClock += delta;
+        swimClock += delta;
         const radiusX = Math.max(0.65, Math.min(4.2, viewHalfWidth - DOLPHIN_BODY_LENGTH * dolphinScale * 0.72));
         const radiusY = mobile ? 1.25 : 1.55;
-        const routeSample = sampleDolphinRoute(routeClock, routeRef.current, radiusX, radiusY, mobile ? 0.34 : 0.32);
+        routePhase = advanceDolphinRoutePhase(
+          routePhase,
+          routeRef.current,
+          radiusX,
+          radiusY,
+          (mobile ? 0.92 : 1.08) * delta,
+        );
+        const routeSample = sampleDolphinRoutePhase(routePhase, routeRef.current, radiusX, radiusY);
         repelForce.x = 0;
         repelForce.y = 0;
         if (pointer.active) {
@@ -636,19 +645,15 @@ export default function CreatureDemo() {
           routeSample.position.x + repulsionOffset.x,
           routeSample.position.y + repulsionOffset.y + (mobile ? -0.2 : -0.45),
         );
-        const headingTarget = Math.atan2(
-          routeSample.velocity.y + repulsionOffset.vy * 0.72,
-          routeSample.velocity.x + repulsionOffset.vx * 0.72,
-        );
-        dolphinHeading = rotateAngleTowards(dolphinHeading, headingTarget, (mobile ? 1.28 : 1.18) * delta);
         advanceDolphinSpine(
           dolphinSpine,
           dolphinHead,
-          dolphinHeading,
-          routeClock,
+          swimClock,
           delta,
           dolphinScale,
         );
+        const headFrame = sampleSpineFrame(dolphinSpine, 0);
+        dolphinForward.set(headFrame.tangent.x, headFrame.tangent.y);
         updateDolphinGeometry();
       };
 
@@ -735,8 +740,8 @@ export default function CreatureDemo() {
           const dolphinDistance = Math.max(0.25, Math.hypot(particle.x - dolphinHead.x, particle.y - dolphinHead.y));
           if (dolphinDistance < 1.6) {
             const wake = (1 - dolphinDistance / 1.6) * delta * 0.3;
-            particle.vx -= Math.cos(dolphinHeading) * wake;
-            particle.vy -= Math.sin(dolphinHeading) * wake;
+            particle.vx -= dolphinForward.x * wake;
+            particle.vy -= dolphinForward.y * wake;
           }
           sampleOceanFlow(particle, seconds + particle.phase, flowForce);
           particle.x += (flowForce.x * 0.055 + particle.vx) * delta;

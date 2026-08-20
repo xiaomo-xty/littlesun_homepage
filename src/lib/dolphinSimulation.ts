@@ -60,7 +60,6 @@ export function createDolphinSpine(
 export function advanceDolphinSpine(
   points: DolphinSpinePoint[],
   head: Vec2,
-  heading: number,
   time: number,
   delta: number,
   scale = 1,
@@ -73,27 +72,36 @@ export function advanceDolphinSpine(
 
   points[0].x = head.x;
   points[0].y = head.y;
-  let parentBehindAngle = heading + Math.PI;
+  let parentBehindAngle: number | undefined;
 
   for (let index = 1; index < points.length; index += 1) {
     const parent = points[index - 1];
     const point = points[index];
     const tailProgress = index / (points.length - 1);
     const bendLimit = maximumBends[index - 1] ?? maximumBends[maximumBends.length - 1] ?? 0.4;
-    const currentBehindAngle = Math.atan2(point.y - parent.y, point.x - parent.x);
-    const wave = Math.sin(time * 4.15 - index * 0.78)
-      * Math.pow(tailProgress, 1.85)
-      * bendLimit
-      * 0.72;
-    const desiredBehindAngle = parentBehindAngle + wave;
-    const response = 3.8 + tailProgress * 4.4;
-    let nextBehindAngle = rotateAngleTowards(
-      currentBehindAngle,
-      desiredBehindAngle,
-      Math.max(0.001, response * delta),
-    );
-    const relativeBend = clamp(shortestAngleDelta(parentBehindAngle, nextBehindAngle), -bendLimit, bendLimit);
-    nextBehindAngle = parentBehindAngle + relativeBend;
+    let nextBehindAngle = Math.atan2(point.y - parent.y, point.x - parent.x);
+
+    if (parentBehindAngle !== undefined) {
+      const relativeBend = clamp(
+        shortestAngleDelta(parentBehindAngle, nextBehindAngle),
+        -bendLimit,
+        bendLimit,
+      );
+      nextBehindAngle = parentBehindAngle + relativeBend;
+
+      const waveTarget = parentBehindAngle
+        + Math.sin(time * 4.15 - index * 0.78)
+        * Math.pow(tailProgress, 2.15)
+        * bendLimit
+        * 0.48;
+      const waveFollow = 1 - Math.exp(-(0.7 + tailProgress * 1.7) * delta);
+      nextBehindAngle += shortestAngleDelta(nextBehindAngle, waveTarget) * waveFollow;
+      nextBehindAngle = parentBehindAngle + clamp(
+        shortestAngleDelta(parentBehindAngle, nextBehindAngle),
+        -bendLimit,
+        bendLimit,
+      );
+    }
 
     const segmentLength = lengths[index - 1] * scale;
     point.x = parent.x + Math.cos(nextBehindAngle) * segmentLength;
@@ -112,6 +120,23 @@ export function sampleDolphinRoute(
   speed = 0.24,
 ): RouteSample {
   const phase = seconds * speed;
+  const sample = sampleDolphinRoutePhase(phase, route, radiusX, radiusY);
+  return {
+    position: sample.position,
+    velocity: {
+      x: sample.velocity.x * speed,
+      y: sample.velocity.y * speed,
+    },
+    heading: sample.heading,
+  };
+}
+
+export function sampleDolphinRoutePhase(
+  phase: number,
+  route: DolphinRoute,
+  radiusX: number,
+  radiusY: number,
+): RouteSample {
   let x: number;
   let y: number;
   let vx: number;
@@ -120,13 +145,13 @@ export function sampleDolphinRoute(
   if (route === "orbit") {
     x = Math.cos(phase) * radiusX;
     y = Math.sin(phase) * radiusY;
-    vx = -Math.sin(phase) * radiusX * speed;
-    vy = Math.cos(phase) * radiusY * speed;
+    vx = -Math.sin(phase) * radiusX;
+    vy = Math.cos(phase) * radiusY;
   } else {
     x = Math.sin(phase) * radiusX;
     y = Math.sin(phase * 2) * radiusY;
-    vx = Math.cos(phase) * radiusX * speed;
-    vy = Math.cos(phase * 2) * radiusY * speed * 2;
+    vx = Math.cos(phase) * radiusX;
+    vy = Math.cos(phase * 2) * radiusY * 2;
   }
 
   return {
@@ -134,6 +159,21 @@ export function sampleDolphinRoute(
     velocity: { x: vx, y: vy },
     heading: Math.atan2(vy, vx),
   };
+}
+
+export function advanceDolphinRoutePhase(
+  phase: number,
+  route: DolphinRoute,
+  radiusX: number,
+  radiusY: number,
+  distance: number,
+) {
+  const first = sampleDolphinRoutePhase(phase, route, radiusX, radiusY);
+  const firstSpeed = Math.max(0.0001, Math.hypot(first.velocity.x, first.velocity.y));
+  const estimatedStep = distance / firstSpeed;
+  const midpoint = sampleDolphinRoutePhase(phase + estimatedStep * 0.5, route, radiusX, radiusY);
+  const midpointSpeed = Math.max(0.0001, Math.hypot(midpoint.velocity.x, midpoint.velocity.y));
+  return phase + distance / midpointSpeed;
 }
 
 export function advanceRepulsionOffset(
