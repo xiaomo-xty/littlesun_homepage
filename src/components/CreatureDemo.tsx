@@ -9,13 +9,15 @@ import { useEffect, useRef, useState } from "react";
 import * as THREE from "three/webgpu";
 import {
   DOLPHIN_BODY_LENGTH,
-  advanceDolphinRoutePhase,
+  advanceDolphinPathStream,
   advanceDolphinSpine,
   advanceRepulsionOffset,
   calculateSimulationSubsteps,
+  createDolphinPathStream,
   createDolphinSpine,
-  sampleDolphinRoutePhase,
+  sampleDolphinBezierPath,
   sampleSpineFrame,
+  type DolphinPathStream,
   type DolphinRoute,
   type DolphinSpinePoint,
   type RepulsionState,
@@ -149,11 +151,11 @@ export default function CreatureDemo() {
   const hostRef = useRef<HTMLDivElement>(null);
   const pausedRef = useRef(false);
   const themeRef = useRef<Theme>("dark");
-  const routeRef = useRef<DolphinRoute>("figure8");
+  const routeRef = useRef<DolphinRoute>("wander");
   const resetVersionRef = useRef(0);
   const [paused, setPaused] = useState(false);
   const [theme, setTheme] = useState<Theme>("dark");
-  const [route, setRoute] = useState<DolphinRoute>("figure8");
+  const [route, setRoute] = useState<DolphinRoute>("wander");
   const [backend, setBackend] = useState("initializing");
   const [status, setStatus] = useState<"loading" | "ready" | "fallback">("loading");
 
@@ -218,6 +220,9 @@ export default function CreatureDemo() {
         return resource;
       };
       const random = seededRandom(20260820);
+      const routeSeed = new Uint32Array(1);
+      globalThis.crypto.getRandomValues(routeSeed);
+      const routeRandom = seededRandom(routeSeed[0] || 20260821);
       const mobile = window.matchMedia("(max-width: 767px)").matches;
       const lowPower = (navigator.hardwareConcurrency || 8) <= 4;
       const requestedBackend = searchParams.get("backend");
@@ -348,7 +353,9 @@ export default function CreatureDemo() {
       let activeTheme = themeRef.current;
       let activeRoute = routeRef.current;
       let resetVersion = resetVersionRef.current;
-      let routePhase = 0;
+      let routeDistance = 0;
+      let routeGeneration = 0;
+      let dolphinStream: DolphinPathStream | undefined;
       let swimClock = 0;
       let simulationClock = 0;
       let pulse = 0;
@@ -668,7 +675,7 @@ export default function CreatureDemo() {
       };
 
       const resetSimulation = () => {
-        routePhase = 0;
+        routeDistance = 0;
         swimClock = 0;
         simulationClock = 0;
         repulsionOffset.x = 0;
@@ -676,7 +683,26 @@ export default function CreatureDemo() {
         repulsionOffset.vx = 0;
         repulsionOffset.vy = 0;
         const radiusX = Math.max(0.65, Math.min(4.2, viewHalfWidth - DOLPHIN_BODY_LENGTH * dolphinScale * 0.72));
-        const routeSample = sampleDolphinRoutePhase(0, routeRef.current, radiusX, mobile ? 1.25 : 1.55);
+        const radiusY = mobile ? 1.25 : 1.55;
+        dolphinStream = createDolphinPathStream(
+          routeRef.current,
+          { x: radiusX, y: radiusY },
+          routeRandom,
+          mobile ? 8 : 10,
+        );
+        routeGeneration += 1;
+        logDiagnostic("route:generated", {
+          generation: routeGeneration,
+          route: routeRef.current,
+          guidePoints: dolphinStream.guidePoints.length,
+          spacing: Number(dolphinStream.spacing.toFixed(3)),
+          lookaheadLength: Number(dolphinStream.path.totalLength.toFixed(3)),
+          signature: dolphinStream.guidePoints.slice(0, 3).map((point) => [
+            Number(point.x.toFixed(2)),
+            Number(point.y.toFixed(2)),
+          ]),
+        });
+        const routeSample = sampleDolphinBezierPath(dolphinStream.path, 0);
         dolphinHead.set(routeSample.position.x, routeSample.position.y + (mobile ? -0.2 : -0.45));
         dolphinSpine = createDolphinSpine(dolphinHead, routeSample.heading, dolphinScale);
         dolphinForward.set(Math.cos(routeSample.heading), Math.sin(routeSample.heading));
@@ -722,17 +748,25 @@ export default function CreatureDemo() {
       };
 
       const simulateDolphin = (delta: number) => {
+        if (!dolphinStream) return;
         swimClock += delta;
-        const radiusX = Math.max(0.65, Math.min(4.2, viewHalfWidth - DOLPHIN_BODY_LENGTH * dolphinScale * 0.72));
-        const radiusY = mobile ? 1.25 : 1.55;
-        routePhase = advanceDolphinRoutePhase(
-          routePhase,
-          routeRef.current,
-          radiusX,
-          radiusY,
+        const advance = advanceDolphinPathStream(
+          dolphinStream,
+          routeDistance,
           (mobile ? 0.92 : 1.08) * delta,
         );
-        const routeSample = sampleDolphinRoutePhase(routePhase, routeRef.current, radiusX, radiusY);
+        routeDistance = advance.distance;
+        if (advance.advancedSegments > 0) {
+          logDiagnostic("route:extended", {
+            streamRevision: dolphinStream.revision,
+            advancedSegments: advance.advancedSegments,
+            target: [
+              Number(dolphinStream.target.x.toFixed(2)),
+              Number(dolphinStream.target.y.toFixed(2)),
+            ],
+          });
+        }
+        const routeSample = sampleDolphinBezierPath(dolphinStream.path, routeDistance);
         repelForce.x = 0;
         repelForce.y = 0;
         if (pointer.active) {
@@ -936,7 +970,10 @@ export default function CreatureDemo() {
             logDiagnostic("frame:heartbeat", {
               frames: renderedFrames,
               route: activeRoute,
-              phase: Number(routePhase.toFixed(3)),
+              segmentProgress: dolphinStream
+                ? Number((routeDistance / dolphinStream.path.segmentLengths[0]).toFixed(3))
+                : 0,
+              streamRevision: dolphinStream?.revision || 0,
               paused: pausedRef.current,
             });
           }
@@ -1086,8 +1123,8 @@ export default function CreatureDemo() {
 
       <div className="creature-demo-toolbar">
         <div className="creature-demo-route" role="group" aria-label="游动路径">
-          <button type="button" aria-pressed={route === "figure8"} onClick={() => selectRoute("figure8")}>8 字</button>
-          <button type="button" aria-pressed={route === "orbit"} onClick={() => selectRoute("orbit")}>环游</button>
+          <button type="button" aria-pressed={route === "wander"} onClick={() => selectRoute("wander")}>漫游</button>
+          <button type="button" aria-pressed={route === "cruise"} onClick={() => selectRoute("cruise")}>巡游</button>
         </div>
         <div className="creature-demo-controls" role="toolbar" aria-label="演示控制">
           <button type="button" onClick={togglePaused} aria-pressed={paused} title={paused ? "继续" : "暂停"} aria-label={paused ? "继续动画" : "暂停动画"}>
