@@ -682,8 +682,10 @@ export default function CreatureDemo() {
         repulsionOffset.y = 0;
         repulsionOffset.vx = 0;
         repulsionOffset.vy = 0;
-        const radiusX = Math.max(0.65, Math.min(4.2, viewHalfWidth - DOLPHIN_BODY_LENGTH * dolphinScale * 0.72));
-        const radiusY = mobile ? 1.25 : 1.55;
+        const radiusX = mobile
+          ? Math.max(2.45, viewHalfWidth * 1.22)
+          : viewHalfWidth * 1.04;
+        const radiusY = viewHalfHeight * (mobile ? 1.02 : 1.06);
         dolphinStream = createDolphinPathStream(
           routeRef.current,
           { x: radiusX, y: radiusY },

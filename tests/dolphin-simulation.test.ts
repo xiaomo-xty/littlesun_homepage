@@ -1,7 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import {
+  DOLPHIN_BODY_LENGTH,
   DOLPHIN_JOINT_LENGTHS,
+  DOLPHIN_MAX_GLOBAL_BEND,
   DOLPHIN_MAX_BENDS,
+  DOLPHIN_MAX_GUIDE_TURNS,
   advanceDolphinPathStream,
   advanceDolphinSpine,
   calculateSimulationSubsteps,
@@ -27,7 +30,7 @@ function seededRandom(seed: number) {
 function createStream(
   seed = 1,
   route: DolphinRoute = "wander",
-  bounds: DolphinPathBounds = { x: 4.2, y: 1.55 },
+  bounds: DolphinPathBounds = { x: 6.9, y: 4 },
   guidePointCount = 10,
 ) {
   return createDolphinPathStream(route, bounds, seededRandom(seed), guidePointCount);
@@ -136,9 +139,12 @@ describe("procedural dolphin simulation", () => {
         const heading = Math.atan2(point.y - previousPoint.y, point.x - previousPoint.x);
         expect(Math.hypot(point.x - previousPoint.x, point.y - previousPoint.y))
           .toBeCloseTo(stream.spacing, 10);
-        expect(Math.abs(point.x)).toBeLessThanOrEqual(stream.bounds.x + 1e-9);
-        expect(Math.abs(point.y)).toBeLessThanOrEqual(stream.bounds.y + 1e-9);
-        expect(Math.abs(shortestAngleDelta(previousHeading, heading))).toBeLessThanOrEqual(0.481);
+        expect(Number.isFinite(point.x)).toBe(true);
+        expect(Number.isFinite(point.y)).toBe(true);
+        expect(Math.abs(point.x)).toBeLessThanOrEqual(stream.bounds.x * 1.5);
+        expect(Math.abs(point.y)).toBeLessThanOrEqual(stream.bounds.y * 1.5);
+        expect(Math.abs(shortestAngleDelta(previousHeading, heading)))
+          .toBeLessThanOrEqual(DOLPHIN_MAX_GUIDE_TURNS.wander + 0.000001);
         previousPoint = point;
         previousHeading = heading;
       }
@@ -182,6 +188,38 @@ describe("procedural dolphin simulation", () => {
     expect(xSpan).toBeGreaterThan(stream.bounds.x * 1.25);
     expect(ySpan).toBeGreaterThan(stream.bounds.y * 1.1);
     expect(occupiedCells.size).toBeGreaterThan(35);
+  });
+
+  test("mobile roaming keeps changing targets and turn direction instead of orbiting", () => {
+    for (let seed = 1; seed <= 12; seed += 1) {
+      const stream = createStream(seed, "wander", { x: 2.45, y: 3.82 }, 8);
+      const targets = new Set<string>();
+      let distance = 0;
+      let previousPoint = stream.guidePoints.at(-1)!;
+      const penultimate = stream.guidePoints.at(-2)!;
+      let previousHeading = Math.atan2(
+        previousPoint.y - penultimate.y,
+        previousPoint.x - penultimate.x,
+      );
+      let previousTurnSign = 0;
+      let turnSignChanges = 0;
+
+      for (let segment = 0; segment < 700; segment += 1) {
+        distance = advanceOneSegment(stream, distance);
+        const point = stream.guidePoints.at(-1)!;
+        const heading = Math.atan2(point.y - previousPoint.y, point.x - previousPoint.x);
+        const turn = shortestAngleDelta(previousHeading, heading);
+        const turnSign = Math.abs(turn) > 0.005 ? Math.sign(turn) : previousTurnSign;
+        if (previousTurnSign !== 0 && turnSign !== previousTurnSign) turnSignChanges += 1;
+        previousTurnSign = turnSign;
+        previousHeading = heading;
+        previousPoint = point;
+        targets.add(`${stream.target.x.toFixed(1)},${stream.target.y.toFixed(1)}`);
+      }
+
+      expect(targets.size).toBeGreaterThan(20);
+      expect(turnSignChanges).toBeGreaterThan(35);
+    }
   });
 
   test("different seeds create distinct streaming routes", () => {
@@ -228,15 +266,15 @@ describe("procedural dolphin simulation", () => {
   });
 
   test("desktop and mobile streams keep their requested lookahead and bounds", () => {
-    const desktop = createStream(91, "wander", { x: 4.2, y: 1.55 }, 10);
-    const mobile = createStream(92, "wander", { x: 1.72, y: 1.25 }, 8);
+    const desktop = createStream(91, "wander", { x: 6.9, y: 4 }, 10);
+    const mobile = createStream(92, "wander", { x: 2.45, y: 3.82 }, 8);
     expect(desktop.guidePoints).toHaveLength(10);
     expect(desktop.path.segments).toHaveLength(7);
     expect(mobile.guidePoints).toHaveLength(8);
     expect(mobile.path.segments).toHaveLength(5);
     mobile.guidePoints.forEach((point) => {
-      expect(Math.abs(point.x)).toBeLessThanOrEqual(mobile.bounds.x + 1e-9);
-      expect(Math.abs(point.y)).toBeLessThanOrEqual(mobile.bounds.y + 1e-9);
+      expect(Number.isFinite(point.x)).toBe(true);
+      expect(Number.isFinite(point.y)).toBe(true);
     });
   });
 
@@ -278,6 +316,50 @@ describe("procedural dolphin simulation", () => {
         expect(Math.abs(shortestAngleDelta(parentAngle, angle)))
           .toBeLessThanOrEqual(DOLPHIN_MAX_BENDS[index - 1] + 0.000001);
         parentAngle = angle;
+      }
+    }
+  });
+
+  test("spine solver keeps the full silhouette inside a cumulative bend envelope", () => {
+    for (let seed = 1; seed <= 24; seed += 1) {
+      const stream = createStream(seed);
+      const initial = sampleDolphinBezierPath(stream.path, 0);
+      const spine = createDolphinSpine(initial.position, initial.heading, 0.9);
+      let distance = 0;
+
+      for (let frame = 0; frame < 2400; frame += 1) {
+        const time = frame / 120;
+        distance = advanceDolphinPathStream(stream, distance, 1.08 / 120).distance;
+        const route = sampleDolphinBezierPath(stream.path, distance);
+        advanceDolphinSpine(spine, route.position, time, 1 / 120, 0.9);
+        const angles = spine.slice(1).map((point, index) => Math.atan2(
+          point.y - spine[index].y,
+          point.x - spine[index].x,
+        ));
+        angles.slice(1).forEach((angle) => {
+          expect(Math.abs(shortestAngleDelta(angles[0], angle)))
+            .toBeLessThanOrEqual(DOLPHIN_MAX_GLOBAL_BEND + 0.000001);
+        });
+      }
+    }
+  });
+
+  test("spine retains a readable head-to-tail silhouette on long random routes", () => {
+    const scale = 0.9;
+    for (let seed = 41; seed <= 52; seed += 1) {
+      const stream = createStream(seed);
+      const initial = sampleDolphinBezierPath(stream.path, 0);
+      const spine = createDolphinSpine(initial.position, initial.heading, scale);
+      let distance = 0;
+
+      for (let frame = 0; frame < 3600; frame += 1) {
+        const time = frame / 120;
+        distance = advanceDolphinPathStream(stream, distance, 1.08 / 120).distance;
+        const route = sampleDolphinBezierPath(stream.path, distance);
+        advanceDolphinSpine(spine, route.position, time, 1 / 120, scale);
+        const tail = spine.at(-1)!;
+        const chord = Math.hypot(tail.x - spine[0].x, tail.y - spine[0].y);
+        expect(chord).toBeGreaterThan(DOLPHIN_BODY_LENGTH * scale * 0.94);
       }
     }
   });

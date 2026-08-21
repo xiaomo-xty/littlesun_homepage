@@ -59,6 +59,11 @@ export type RepulsionState = Vec2 & {
 
 export const DOLPHIN_JOINT_LENGTHS = [0.43, 0.48, 0.5, 0.48, 0.43, 0.37, 0.31] as const;
 export const DOLPHIN_MAX_BENDS = [0.12, 0.14, 0.17, 0.22, 0.3, 0.4, 0.52] as const;
+export const DOLPHIN_MAX_GLOBAL_BEND = 0.95;
+export const DOLPHIN_MAX_GUIDE_TURNS: Readonly<Record<DolphinRoute, number>> = {
+  wander: 0.2,
+  cruise: 0.125,
+};
 export const DOLPHIN_BODY_LENGTH = DOLPHIN_JOINT_LENGTHS.reduce((sum, length) => sum + length, 0);
 export const DOLPHIN_SIMULATION_STEP = 1 / 120;
 export const DOLPHIN_MAX_SUBSTEPS = 5;
@@ -135,6 +140,7 @@ export function advanceDolphinSpine(
   points[0].x = head.x;
   points[0].y = head.y;
   let parentBehindAngle: number | undefined;
+  let frontBehindAngle: number | undefined;
 
   for (let index = 1; index < points.length; index += 1) {
     const parent = points[index - 1];
@@ -169,11 +175,24 @@ export function advanceDolphinSpine(
         -bendLimit,
         bendLimit,
       );
+
+      const globalBendLimit = DOLPHIN_MAX_GLOBAL_BEND * Math.pow(tailProgress, 1.35);
+      nextBehindAngle = frontBehindAngle! + clamp(
+        shortestAngleDelta(frontBehindAngle!, nextBehindAngle),
+        -globalBendLimit,
+        globalBendLimit,
+      );
+      nextBehindAngle = parentBehindAngle + clamp(
+        shortestAngleDelta(parentBehindAngle, nextBehindAngle),
+        -bendLimit,
+        bendLimit,
+      );
     }
 
     const segmentLength = lengths[index - 1] * scale;
     point.x = parent.x + Math.cos(nextBehindAngle) * segmentLength;
     point.y = parent.y + Math.sin(nextBehindAngle) * segmentLength;
+    frontBehindAngle ??= nextBehindAngle;
     parentBehindAngle = nextBehindAngle;
   }
 
@@ -310,15 +329,15 @@ function pickDistantTarget(state: DolphinGuideState) {
   }
   state.target = selected;
   state.targetStepsRemaining = state.route === "wander"
-    ? 12 + Math.floor(state.random() * 13)
-    : 18 + Math.floor(state.random() * 13);
+    ? 18 + Math.floor(state.random() * 15)
+    : 26 + Math.floor(state.random() * 17);
 }
 
 function boundaryPressure(value: number, limit: number) {
   const normalized = Math.abs(value) / limit;
-  if (normalized <= 0.18) return 0;
-  const amount = (normalized - 0.18) / 0.82;
-  return -Math.sign(value) * amount * amount * 12;
+  if (normalized <= 0.66) return 0;
+  const amount = (normalized - 0.66) / 0.34;
+  return -Math.sign(value) * amount * amount * 6;
 }
 
 function appendDolphinGuidePoint(state: DolphinGuideState) {
@@ -335,18 +354,18 @@ function appendDolphinGuidePoint(state: DolphinGuideState) {
   const projectedY = current.y + Math.sin(state.heading) * state.spacing * 10;
   const desiredX = targetX / targetLength + boundaryPressure(projectedX, state.bounds.x);
   const desiredY = targetY / targetLength + boundaryPressure(projectedY, state.bounds.y);
-  const jitter = (state.random() * 2 - 1) * (state.route === "wander" ? 0.1 : 0.035);
+  const jitter = (state.random() * 2 - 1) * (state.route === "wander" ? 0.05 : 0.02);
   const desiredHeading = Math.atan2(desiredY, desiredX) + jitter;
-  const maximumTurn = state.route === "wander" ? 0.48 : 0.34;
+  const maximumTurn = DOLPHIN_MAX_GUIDE_TURNS[state.route];
 
   let selectedHeading = rotateAngleTowards(state.heading, desiredHeading, maximumTurn);
   let selectedTurnRate = shortestAngleDelta(state.heading, selectedHeading);
   let selectedScore = -Infinity;
   const needsBoundaryTurn = (
-    Math.abs(current.x) > state.bounds.x * 0.48
+    Math.abs(current.x) > state.bounds.x * 0.72
     && current.x * Math.cos(state.heading) > 0
   ) || (
-    Math.abs(current.y) > state.bounds.y * 0.48
+    Math.abs(current.y) > state.bounds.y * 0.72
     && current.y * Math.sin(state.heading) > 0
   );
   for (let index = 0; index <= 32; index += 1) {
@@ -362,7 +381,6 @@ function appendDolphinGuidePoint(state: DolphinGuideState) {
     const candidateHeading = state.heading + offset;
     const candidateX = current.x + Math.cos(candidateHeading) * state.spacing;
     const candidateY = current.y + Math.sin(candidateHeading) * state.spacing;
-    if (Math.abs(candidateX) > state.bounds.x || Math.abs(candidateY) > state.bounds.y) continue;
     let lookaheadX = current.x;
     let lookaheadY = current.y;
     let lookaheadHeading = state.heading;
