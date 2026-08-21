@@ -5,12 +5,42 @@ import {
   fracturePattern,
   pointerRepulsion,
   resolveCircleCollision,
+  sampleAmbientDepth,
+  sampleJellyPulse,
   sampleOceanFlow,
   schoolingSteer,
   type SolidBodyState,
 } from "../src/lib/ambientSimulation";
 
 describe("ambient entity rules", () => {
+  test("depth profiles make distant pixels smaller, dimmer and slower", () => {
+    const far = sampleAmbientDepth(0.08);
+    const middle = sampleAmbientDepth(0.5);
+    const near = sampleAmbientDepth(0.92);
+
+    expect(far.scale).toBeLessThan(middle.scale);
+    expect(middle.scale).toBeLessThan(near.scale);
+    expect(far.opacity).toBeLessThan(middle.opacity);
+    expect(middle.opacity).toBeLessThan(near.opacity);
+    expect(far.drift).toBeLessThan(near.drift);
+    expect(far.interaction).toBeLessThan(near.interaction);
+  });
+
+  test("jelly pulse contracts quickly, relaxes slowly and closes continuously", () => {
+    const resting = sampleJellyPulse(0);
+    const contracted = sampleJellyPulse(0.18);
+    const relaxing = sampleJellyPulse(0.6);
+    const loopEnd = sampleJellyPulse(0.99999);
+
+    expect(resting).toEqual({ contraction: 0, thrust: 0 });
+    expect(contracted.contraction).toBeCloseTo(1, 6);
+    expect(contracted.thrust).toBe(0);
+    expect(relaxing.contraction).toBeGreaterThan(0.35);
+    expect(loopEnd.contraction).toBeLessThan(0.00001);
+    expect(sampleJellyPulse(0.09).thrust).toBeCloseTo(1, 6);
+    expect(sampleJellyPulse(0.4).thrust).toBe(0);
+  });
+
   test("pointer force always points away from the cursor", () => {
     const force = pointerRepulsion({ x: 1, y: 0.5 }, { x: 0, y: 0 }, 3, 2);
     expect(force.x).toBeGreaterThan(0);

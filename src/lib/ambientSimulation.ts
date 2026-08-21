@@ -40,6 +40,47 @@ export type SchoolingOptions = {
 
 export type RibbonPoint = BoidState;
 
+export type AmbientDepthProfile = {
+  scale: number;
+  opacity: number;
+  drift: number;
+  interaction: number;
+};
+
+export type JellyPulseSample = {
+  contraction: number;
+  thrust: number;
+};
+
+function smoothstep(value: number) {
+  const clamped = Math.max(0, Math.min(1, value));
+  return clamped * clamped * (3 - 2 * clamped);
+}
+
+export function sampleAmbientDepth(depth: number): AmbientDepthProfile {
+  const normalized = Math.max(0, Math.min(1, depth));
+  const eased = smoothstep(normalized);
+  return {
+    scale: 0.38 + eased * 1.34,
+    opacity: 0.18 + eased * 0.48,
+    drift: 0.52 + eased * 0.7,
+    interaction: 0.28 + eased * 0.92,
+  };
+}
+
+export function sampleJellyPulse(phase: number): JellyPulseSample {
+  const wrapped = ((phase % 1) + 1) % 1;
+  const contractionEnd = 0.18;
+  const contraction = wrapped < contractionEnd
+    ? smoothstep(wrapped / contractionEnd)
+    : 1 - smoothstep((wrapped - contractionEnd) / (1 - contractionEnd));
+  const rawThrust = wrapped < contractionEnd
+    ? Math.sin(wrapped / contractionEnd * Math.PI) ** 2
+    : 0;
+  const thrust = rawThrust < 1e-12 ? 0 : rawThrust;
+  return { contraction, thrust };
+}
+
 export function pointerRepulsion(
   position: Vector2Like,
   pointer: Vector2Like,
