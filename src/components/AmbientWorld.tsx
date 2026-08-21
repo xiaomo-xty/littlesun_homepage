@@ -6,15 +6,36 @@ import {
   fracturePattern,
   pointerRepulsion,
   resolveCircleCollision,
+  sampleAmbientDepth,
+  sampleJellyPulse,
   sampleOceanFlow,
-  schoolingSteer,
-  type BoidState,
   type CollisionResult,
   type RibbonPoint,
   type SolidBodyState,
   type SolidKind,
   type Vector2Like,
 } from "../lib/ambientSimulation";
+import {
+  DOLPHIN_BODY_LENGTH,
+  advanceDolphinPathStream,
+  advanceDolphinSpine,
+  advanceRepulsionOffset,
+  calculateSimulationSubsteps,
+  createDolphinPathStream,
+  createDolphinSpine,
+  sampleDolphinBezierPath,
+  sampleSpineFrame,
+  type DolphinPathStream,
+  type DolphinSpinePoint,
+  type RepulsionState,
+} from "../lib/dolphinSimulation";
+import {
+  createDolphinBellyShape,
+  createDolphinBodyShape,
+  createDolphinDorsalFinShape,
+  createDolphinPectoralFinShape,
+  createDolphinTailShape,
+} from "../lib/dolphinGeometry";
 
 type Disposable = { dispose: () => void };
 type BackendFlags = { isWebGPUBackend?: boolean; isWebGLBackend?: boolean };
@@ -23,9 +44,9 @@ type SceneProfile = {
   energy: number;
   entity: number;
   particle: number;
-  school: number;
-  raySpeed: number;
-  rayBiasY: number;
+  jelly: number;
+  dolphinSpeed: number;
+  dolphinBiasY: number;
   flow: number;
 };
 
@@ -49,29 +70,52 @@ type OceanParticle = {
   z: number;
   vx: number;
   vy: number;
+  depth: number;
+  depthScale: number;
+  depthOpacity: number;
+  drift: number;
+  interaction: number;
   size: number;
   phase: number;
   speed: number;
 };
 
-type SchoolOrganism = BoidState & {
+type ParticleLayer = {
+  mesh: THREE.InstancedMesh;
+  material: THREE.MeshBasicMaterial;
+  particles: OceanParticle[];
+  depthRange: readonly [number, number];
+};
+
+type JellyTentacle = {
+  points: RibbonPoint[];
+  positions: Float32Array;
+  attribute: THREE.BufferAttribute;
+  material: THREE.LineBasicMaterial;
+  offset: number;
+};
+
+type AmbientJelly = Vector2Like & {
+  vx: number;
+  vy: number;
   phase: number;
   scale: number;
   depth: number;
+  cycleDuration: number;
+  pulseStrength: number;
+  heading: number;
+  group: THREE.Group;
+  fill: THREE.MeshBasicMaterial;
+  edge: THREE.LineBasicMaterial;
+  tentacles: JellyTentacle[];
 };
 
 type SafeZone = { left: number; right: number; top: number; bottom: number };
 type FractureRequest = { entity: OceanEntity; impact: number };
 
-type CurveRibbon = {
-  points: RibbonPoint[];
-  curvePoints: THREE.Vector3[];
-  curve: THREE.CatmullRomCurve3;
-  positions: Float32Array;
+type DolphinPart = {
   attribute: THREE.BufferAttribute;
-  material: THREE.LineBasicMaterial;
-  samples: number;
-  phase: number;
+  basePositions: Float32Array;
 };
 
 type FlowRibbon = {
@@ -87,12 +131,12 @@ type FlowRibbon = {
 };
 
 const profiles: Record<string, SceneProfile> = {
-  top: { energy: 0.86, entity: 0.78, particle: 0.72, school: 0.86, raySpeed: 0.82, rayBiasY: 0.12, flow: 0.72 },
-  about: { energy: 0.64, entity: 0.58, particle: 0.44, school: 0.62, raySpeed: 0.62, rayBiasY: -0.08, flow: 0.58 },
-  projects: { energy: 1, entity: 0.94, particle: 0.88, school: 1, raySpeed: 1, rayBiasY: 0.04, flow: 0.92 },
-  articles: { energy: 0.54, entity: 0.48, particle: 0.34, school: 0.54, raySpeed: 0.54, rayBiasY: -0.2, flow: 0.48 },
-  life: { energy: 0.82, entity: 0.72, particle: 0.72, school: 0.88, raySpeed: 0.84, rayBiasY: 0.18, flow: 0.8 },
-  contact: { energy: 0.58, entity: 0.52, particle: 0.38, school: 0.58, raySpeed: 0.56, rayBiasY: 0, flow: 0.52 },
+  top: { energy: 0.86, entity: 0.78, particle: 0.72, jelly: 0.86, dolphinSpeed: 0.82, dolphinBiasY: 0.12, flow: 0.72 },
+  about: { energy: 0.64, entity: 0.58, particle: 0.44, jelly: 0.62, dolphinSpeed: 0.62, dolphinBiasY: -0.08, flow: 0.58 },
+  projects: { energy: 1, entity: 0.94, particle: 0.88, jelly: 1, dolphinSpeed: 1, dolphinBiasY: 0.04, flow: 0.92 },
+  articles: { energy: 0.54, entity: 0.48, particle: 0.34, jelly: 0.54, dolphinSpeed: 0.54, dolphinBiasY: -0.2, flow: 0.48 },
+  life: { energy: 0.82, entity: 0.72, particle: 0.72, jelly: 0.88, dolphinSpeed: 0.84, dolphinBiasY: 0.18, flow: 0.8 },
+  contact: { energy: 0.58, entity: 0.52, particle: 0.38, jelly: 0.58, dolphinSpeed: 0.56, dolphinBiasY: 0, flow: 0.52 },
 };
 
 const defaultProfile = profiles.top;
@@ -127,7 +171,7 @@ export default function AmbientWorld() {
 
     host.dataset.backend = "static";
     host.dataset.quality = "static";
-    host.dataset.creature = "space-ray";
+    host.dataset.creature = "same-side-dolphin";
     host.dataset.pointerForce = "repel";
     host.dataset.entityCount = "0";
     host.dataset.organismCount = "0";
@@ -224,10 +268,7 @@ export default function AmbientWorld() {
       };
 
       const sharedMatrix = new THREE.Matrix4();
-      const sharedQuaternion = new THREE.Quaternion();
-      const sharedPosition = new THREE.Vector3();
-      const sharedScale = new THREE.Vector3();
-      const zAxis = new THREE.Vector3(0, 0, 1);
+      const sharedColor = new THREE.Color();
       const curveSample = new THREE.Vector3();
       const pointerWorld = new THREE.Vector2();
       const repelForce: Vector2Like = { x: 0, y: 0 };
@@ -235,22 +276,45 @@ export default function AmbientWorld() {
       const zoneForce = new THREE.Vector2();
       const obstacleForce = new THREE.Vector2();
 
-      const particleCount = balanced ? 34 : 66;
       const particleGeometry = register(new THREE.BoxGeometry(0.05, 0.05, 0.025));
-      const particleMaterial = register(new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.2, depthWrite: false }));
-      const particleMesh = new THREE.InstancedMesh(particleGeometry, particleMaterial, particleCount);
-      particleMesh.frustumCulled = false;
-      world.add(particleMesh);
-      const particles: OceanParticle[] = Array.from({ length: particleCount }, () => ({
-        x: random() * 12 - 6,
-        y: random() * 10 - 5,
-        z: -2.8 - random() * 3.4,
-        vx: 0,
-        vy: 0,
-        size: 0.42 + random() * 1.12,
-        phase: random() * Math.PI * 2,
-        speed: 0.035 + random() * 0.12,
-      }));
+      const particleLayerSpecs = [
+        { count: balanced ? 28 : 48, depthRange: [0.02, 0.34] as const, renderOrder: 18 },
+        { count: balanced ? 14 : 26, depthRange: [0.38, 0.72] as const, renderOrder: 70 },
+        { count: balanced ? 6 : 10, depthRange: [0.8, 1] as const, renderOrder: 112 },
+      ];
+      const particleLayers: ParticleLayer[] = particleLayerSpecs.map((spec) => {
+        const material = register(new THREE.MeshBasicMaterial({
+          transparent: true,
+          depthTest: false,
+          depthWrite: false,
+          vertexColors: true,
+        }));
+        const mesh = new THREE.InstancedMesh(particleGeometry, material, spec.count);
+        mesh.frustumCulled = false;
+        mesh.renderOrder = spec.renderOrder;
+        world.add(mesh);
+        const layerParticles = Array.from({ length: spec.count }, (): OceanParticle => {
+          const depth = spec.depthRange[0] + random() * (spec.depthRange[1] - spec.depthRange[0]);
+          const depthProfile = sampleAmbientDepth(depth);
+          return {
+            x: random() * 12 - 6,
+            y: random() * 10 - 5,
+            z: -5.4 + depth * 5.8,
+            vx: 0,
+            vy: 0,
+            depth,
+            depthScale: depthProfile.scale,
+            depthOpacity: depthProfile.opacity,
+            drift: depthProfile.drift,
+            interaction: depthProfile.interaction,
+            size: 0.62 + random() * 0.88,
+            phase: random() * Math.PI * 2,
+            speed: 0.035 + random() * 0.12,
+          };
+        });
+        return { mesh, material, particles: layerParticles, depthRange: spec.depthRange };
+      });
+      const particles = particleLayers.flatMap((layer) => layer.particles);
 
       const createFlowRibbon = (index: number): FlowRibbon => {
         const controlCount = balanced ? 6 : 8;
@@ -280,40 +344,98 @@ export default function AmbientWorld() {
       };
       const flowRibbons = Array.from({ length: balanced ? 3 : 4 }, (_, index) => createFlowRibbon(index));
 
-      const makeSchoolGeometry = () => {
-        const shape = new THREE.Shape();
-        shape.moveTo(0.26, 0);
-        shape.quadraticCurveTo(0.02, 0.16, -0.18, 0.08);
-        shape.quadraticCurveTo(-0.3, 0.16, -0.25, 0);
-        shape.quadraticCurveTo(-0.3, -0.16, -0.18, -0.08);
-        shape.quadraticCurveTo(0.02, -0.16, 0.26, 0);
-        return register(new THREE.ShapeGeometry(shape, 8));
+      const jellyShape = new THREE.Shape();
+      jellyShape.moveTo(-0.55, 0);
+      jellyShape.bezierCurveTo(-0.5, 0.48, -0.2, 0.68, 0, 0.68);
+      jellyShape.bezierCurveTo(0.2, 0.68, 0.5, 0.48, 0.55, 0);
+      jellyShape.quadraticCurveTo(0.36, -0.12, 0.2, 0);
+      jellyShape.quadraticCurveTo(0, -0.14, -0.2, 0);
+      jellyShape.quadraticCurveTo(-0.36, -0.12, -0.55, 0);
+      const jellyGeometry = register(new THREE.ShapeGeometry(jellyShape, balanced ? 10 : 18));
+      const jellyEdgeGeometry = register(new THREE.EdgesGeometry(jellyGeometry, 34));
+      const jellies: AmbientJelly[] = [];
+
+      const resetJellyTentacles = (jelly: AmbientJelly) => {
+        jelly.tentacles.forEach((tentacle) => {
+          tentacle.points.forEach((point, pointIndex) => {
+            point.x = tentacle.offset;
+            point.y = -pointIndex * 0.16;
+            point.vx = 0;
+            point.vy = 0;
+          });
+        });
       };
 
-      const schoolCount = balanced ? 10 : 18;
-      const schoolMaterial = register(new THREE.MeshBasicMaterial({ transparent: true, side: THREE.DoubleSide, depthWrite: false }));
-      const schoolMesh = new THREE.InstancedMesh(makeSchoolGeometry(), schoolMaterial, schoolCount);
-      schoolMesh.frustumCulled = false;
-      world.add(schoolMesh);
-      const school: SchoolOrganism[] = Array.from({ length: schoolCount }, () => ({
-        x: random() * 9 - 4.5,
-        y: random() * 6 - 3,
-        vx: 0.24 + random() * 0.28,
-        vy: (random() - 0.5) * 0.28,
-        phase: random() * Math.PI * 2,
-        scale: 0.72 + random() * 0.78,
-        depth: -1.7 - random() * 1.6,
-      }));
-      host.dataset.organismCount = String(schoolCount);
-      const schoolForce: Vector2Like = { x: 0, y: 0 };
-      const schoolOptions = {
-        neighborRadius: balanced ? 1.8 : 2.1,
-        separationRadius: 0.52,
-        separationWeight: 0.16,
-        alignmentWeight: 0.25,
-        cohesionWeight: 0.045,
-        maxForce: 0.7,
+      const createJelly = (x: number, y: number, scale: number, phase: number, depth: number) => {
+        const fill = register(new THREE.MeshBasicMaterial({
+          transparent: true,
+          side: THREE.DoubleSide,
+          depthTest: false,
+          depthWrite: false,
+        }));
+        const edge = register(new THREE.LineBasicMaterial({
+          transparent: true,
+          depthTest: false,
+          depthWrite: false,
+        }));
+        const bell = new THREE.Mesh(jellyGeometry, fill);
+        const outline = new THREE.LineSegments(jellyEdgeGeometry, edge);
+        const group = new THREE.Group();
+        const renderOrder = 52 + Math.round(depth * 30);
+        bell.renderOrder = renderOrder;
+        outline.renderOrder = renderOrder + 1;
+        group.add(bell, outline);
+        group.position.set(x, y, -3.2 + depth * 2.4);
+        group.frustumCulled = false;
+        world.add(group);
+
+        const tentacles: JellyTentacle[] = Array.from({ length: 4 }, (_, tentacleIndex) => {
+          const offset = (tentacleIndex - 1.5) * 0.21;
+          const points = Array.from({ length: balanced ? 5 : 6 }, (_, pointIndex) => ({
+            x: offset,
+            y: -pointIndex * 0.16,
+            vx: 0,
+            vy: 0,
+          }));
+          const positions = new Float32Array(points.length * 3);
+          const geometry = register(new THREE.BufferGeometry());
+          const attribute = new THREE.BufferAttribute(positions, 3);
+          attribute.setUsage(THREE.DynamicDrawUsage);
+          geometry.setAttribute("position", attribute);
+          const material = register(new THREE.LineBasicMaterial({
+            transparent: true,
+            depthTest: false,
+            depthWrite: false,
+          }));
+          const line = new THREE.Line(geometry, material);
+          line.frustumCulled = false;
+          line.renderOrder = renderOrder + 2;
+          group.add(line);
+          return { points, positions, attribute, material, offset };
+        });
+
+        jellies.push({
+          x,
+          y,
+          vx: 0.04 + random() * 0.07,
+          vy: 0.02 + random() * 0.04,
+          depth,
+          phase,
+          scale,
+          cycleDuration: 2.9 + random() * 1.05,
+          pulseStrength: 0.28 + random() * 0.14,
+          heading: Math.PI * (0.34 + random() * 0.32),
+          group,
+          fill,
+          edge,
+          tentacles,
+        });
       };
+
+      createJelly(-3.8, 1.7, 0.62, 0.2, 0.62);
+      createJelly(3.35, -1.55, 0.52, 2.5, 0.38);
+      if (!balanced) createJelly(1.1, 2.65, 0.38, 4.1, 0.72);
+      host.dataset.organismCount = String(jellies.length);
 
       const entities: OceanEntity[] = [];
       const activeEntities: OceanEntity[] = [];
@@ -405,52 +527,164 @@ export default function AmbientWorld() {
       }
       host.dataset.entityCount = String(initialEntityCount);
 
-      const rayShape = new THREE.Shape();
-      rayShape.moveTo(0.88, 0);
-      rayShape.quadraticCurveTo(0.2, 0.26, -0.16, 0.72);
-      rayShape.quadraticCurveTo(-0.52, 0.48, -0.72, 0.08);
-      rayShape.quadraticCurveTo(-0.5, 0, -0.72, -0.08);
-      rayShape.quadraticCurveTo(-0.52, -0.48, -0.16, -0.72);
-      rayShape.quadraticCurveTo(0.2, -0.26, 0.88, 0);
-      const rayGeometry = register(new THREE.ShapeGeometry(rayShape, balanced ? 12 : 18));
-      const rayFillMaterial = register(new THREE.MeshBasicMaterial({ transparent: true, side: THREE.DoubleSide, depthWrite: false }));
-      const rayEdgeMaterial = register(new THREE.LineBasicMaterial({ transparent: true, depthWrite: false }));
-      const rayBody = new THREE.Mesh(rayGeometry, rayFillMaterial);
-      const rayEdges = new THREE.LineSegments(register(new THREE.EdgesGeometry(rayGeometry, 40)), rayEdgeMaterial);
-      const rayGroup = new THREE.Group();
-      rayGroup.add(rayBody, rayEdges);
-      world.add(rayGroup);
+      const dolphinParts: DolphinPart[] = [];
+      const createDolphinMaterial = (color: number) => register(new THREE.MeshBasicMaterial({
+        color,
+        transparent: true,
+        depthTest: false,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+      }));
+      const dolphinBodyMaterial = createDolphinMaterial(0x58b4dc);
+      const dolphinBellyMaterial = createDolphinMaterial(0xb5e4ec);
+      const dolphinFinMaterial = createDolphinMaterial(0x3c94bd);
+      const dolphinEyeMaterial = createDolphinMaterial(0x071722);
+      const dolphinOutlineMaterial = register(new THREE.LineBasicMaterial({
+        color: 0xc4eff7,
+        transparent: true,
+        depthTest: false,
+        depthWrite: false,
+      }));
+      const dolphinMouthMaterial = register(new THREE.LineBasicMaterial({
+        color: 0x17526d,
+        transparent: true,
+        depthTest: false,
+        depthWrite: false,
+      }));
 
-      const createTailRibbon = (index: number): CurveRibbon => {
-        const pointCount = balanced ? 6 : 8;
-        const samples = balanced ? 24 : 38;
-        const points = Array.from({ length: pointCount }, (_, pointIndex) => ({
-          x: -2.4 - pointIndex * 0.38,
-          y: 0.6 + (index - 1) * 0.18,
-          vx: 0,
-          vy: 0,
-        }));
-        const curvePoints = points.map((point) => new THREE.Vector3(point.x, point.y, -0.18));
-        const curve = new THREE.CatmullRomCurve3(curvePoints, false, "centripetal", 0.46);
-        const positions = new Float32Array(samples * 3);
-        const geometry = register(new THREE.BufferGeometry());
-        const attribute = new THREE.BufferAttribute(positions, 3);
+      const addDolphinPart = (
+        geometry: THREE.BufferGeometry,
+        object: THREE.Object3D,
+        renderOrder: number,
+      ) => {
+        const attribute = geometry.getAttribute("position") as THREE.BufferAttribute;
         attribute.setUsage(THREE.DynamicDrawUsage);
-        geometry.setAttribute("position", attribute);
-        const material = register(new THREE.LineBasicMaterial({ transparent: true, depthWrite: false }));
-        const line = new THREE.Line(geometry, material);
-        line.frustumCulled = false;
-        world.add(line);
-        return { points, curvePoints, curve, positions, attribute, material, samples, phase: index * 1.7 };
+        dolphinParts.push({
+          attribute,
+          basePositions: new Float32Array(attribute.array as ArrayLike<number>),
+        });
+        object.renderOrder = renderOrder;
+        object.frustumCulled = false;
+        world.add(object);
       };
-      const rayTails = Array.from({ length: 3 }, (_, index) => createTailRibbon(index));
-      const rayPosition = new THREE.Vector2(-2.8, 0.8);
-      const rayVelocity = new THREE.Vector2(0.52, 0.12);
-      const rayForce = new THREE.Vector2();
-      const rayDesired = new THREE.Vector2();
-      const rayWanderTarget = new THREE.Vector2(2.4, 0.6);
-      let rayWanderTimer = 0;
-      let rayKickCooldown = 0;
+
+      const addDolphinShape = (shape: THREE.Shape, material: THREE.MeshBasicMaterial, order: number) => {
+        const geometry = register(new THREE.ShapeGeometry(shape, balanced ? 18 : 28));
+        const mesh = new THREE.Mesh(geometry, material);
+        mesh.position.z = -0.2 + order * 0.001;
+        addDolphinPart(geometry, mesh, order);
+      };
+
+      const dolphinBodyShape = createDolphinBodyShape();
+      addDolphinShape(createDolphinTailShape(), dolphinFinMaterial, 88);
+      addDolphinShape(createDolphinDorsalFinShape(), dolphinFinMaterial, 89);
+      addDolphinShape(dolphinBodyShape, dolphinBodyMaterial, 90);
+      addDolphinShape(createDolphinBellyShape(), dolphinBellyMaterial, 91);
+      addDolphinShape(createDolphinPectoralFinShape(), dolphinFinMaterial, 92);
+
+      const contourPoints = dolphinBodyShape.getSpacedPoints(balanced ? 44 : 72);
+      const contourPositions = new Float32Array((contourPoints.length + 1) * 3);
+      contourPoints.forEach((point, index) => {
+        contourPositions[index * 3] = point.x;
+        contourPositions[index * 3 + 1] = point.y;
+      });
+      contourPositions[contourPoints.length * 3] = contourPoints[0].x;
+      contourPositions[contourPoints.length * 3 + 1] = contourPoints[0].y;
+      const contourGeometry = register(new THREE.BufferGeometry());
+      contourGeometry.setAttribute("position", new THREE.BufferAttribute(contourPositions, 3));
+      const dolphinContour = new THREE.Line(contourGeometry, dolphinOutlineMaterial);
+      dolphinContour.position.z = -0.105;
+      addDolphinPart(contourGeometry, dolphinContour, 93);
+
+      const mouthPositions = new Float32Array([
+        0.38, -0.065, 0,
+        0.3, -0.085, 0,
+        0.22, -0.1, 0,
+        0.14, -0.11, 0,
+        0.06, -0.115, 0,
+      ]);
+      const mouthGeometry = register(new THREE.BufferGeometry());
+      mouthGeometry.setAttribute("position", new THREE.BufferAttribute(mouthPositions, 3));
+      const dolphinMouth = new THREE.Line(mouthGeometry, dolphinMouthMaterial);
+      dolphinMouth.position.z = -0.1;
+      addDolphinPart(mouthGeometry, dolphinMouth, 94);
+
+      const eyeGeometry = register(new THREE.CircleGeometry(0.052, balanced ? 12 : 18));
+      eyeGeometry.translate(-0.13, 0.22, 0);
+      const dolphinEye = new THREE.Mesh(eyeGeometry, dolphinEyeMaterial);
+      dolphinEye.position.z = -0.095;
+      addDolphinPart(eyeGeometry, dolphinEye, 95);
+
+      const routeSeed = new Uint32Array(1);
+      globalThis.crypto.getRandomValues(routeSeed);
+      const routeRandom = seededRandom(routeSeed[0] || 20260822);
+      let dolphinScale = mobile ? 0.5 : 0.74;
+      let dolphinStream: DolphinPathStream | undefined;
+      let dolphinRouteDistance = 0;
+      let dolphinSwimClock = 0;
+      let simulationClock = 0;
+      let dolphinSpine: DolphinSpinePoint[] = createDolphinSpine({ x: 0, y: 0 }, 0, dolphinScale);
+      const dolphinHead = new THREE.Vector2();
+      const dolphinForward = new THREE.Vector2(1, 0);
+      const dolphinRepulsion: RepulsionState = { x: 0, y: 0, vx: 0, vy: 0 };
+      let dolphinEntityCooldown = 0;
+      let dolphinTextVisibility = 1;
+
+      const updateDolphinGeometry = () => {
+        const headFrame = sampleSpineFrame(dolphinSpine, 0);
+        const tailFrame = sampleSpineFrame(dolphinSpine, 1);
+        dolphinParts.forEach((part) => {
+          for (let index = 0; index < part.basePositions.length; index += 3) {
+            const baseX = part.basePositions[index];
+            const baseY = part.basePositions[index + 1] * dolphinScale;
+            const longitudinal = -baseX;
+            let frameSample;
+            let along = 0;
+            if (longitudinal < 0) {
+              frameSample = headFrame;
+              along = -longitudinal * dolphinScale;
+            } else if (longitudinal > DOLPHIN_BODY_LENGTH) {
+              frameSample = tailFrame;
+              along = -(longitudinal - DOLPHIN_BODY_LENGTH) * dolphinScale;
+            } else {
+              frameSample = sampleSpineFrame(dolphinSpine, longitudinal / DOLPHIN_BODY_LENGTH);
+            }
+            part.attribute.setXYZ(
+              index / 3,
+              frameSample.position.x + frameSample.tangent.x * along + frameSample.normal.x * baseY,
+              frameSample.position.y + frameSample.tangent.y * along + frameSample.normal.y * baseY,
+              part.basePositions[index + 2],
+            );
+          }
+          part.attribute.needsUpdate = true;
+        });
+      };
+
+      const resetDolphinPath = () => {
+        dolphinRouteDistance = 0;
+        dolphinSwimClock = 0;
+        dolphinRepulsion.x = 0;
+        dolphinRepulsion.y = 0;
+        dolphinRepulsion.vx = 0;
+        dolphinRepulsion.vy = 0;
+        dolphinScale = mobile
+          ? Math.min(0.52, Math.max(0.45, viewHalfWidth / 4.6))
+          : 0.74;
+        dolphinStream = createDolphinPathStream(
+          "wander",
+          {
+            x: mobile ? Math.max(2.35, viewHalfWidth * 1.18) : viewHalfWidth * 1.04,
+            y: viewHalfHeight * (mobile ? 1.02 : 1.06),
+          },
+          routeRandom,
+          mobile ? 8 : 10,
+        );
+        const routeSample = sampleDolphinBezierPath(dolphinStream.path, 0);
+        dolphinHead.set(routeSample.position.x, routeSample.position.y + currentProfile.dolphinBiasY);
+        dolphinSpine = createDolphinSpine(dolphinHead, routeSample.heading, dolphinScale);
+        dolphinForward.set(Math.cos(routeSample.heading), Math.sin(routeSample.heading));
+        updateDolphinGeometry();
+      };
 
       const applyTheme = () => {
         const styles = getComputedStyle(document.documentElement);
@@ -460,11 +694,22 @@ export default function AmbientWorld() {
         palette.line.set(styles.getPropertyValue("--line-strong").trim() || "#6f8ca3");
         palette.surface.set(styles.getPropertyValue("--surface-strong").trim() || "#d7e6f2");
         palette.ink.set(styles.getPropertyValue("--ink").trim() || "#101820");
-        particleMaterial.color.copy(palette.accent);
-        schoolMaterial.color.copy(lightTheme ? palette.accentStrong : palette.accent);
-        rayFillMaterial.color.copy(lightTheme ? palette.surface : palette.accent);
-        rayEdgeMaterial.color.copy(lightTheme ? palette.accentStrong : palette.accent);
-        rayTails.forEach((tail, index) => tail.material.color.copy(index === 1 ? palette.accentStrong : palette.accent));
+        dolphinBodyMaterial.color.copy(lightTheme ? palette.accentStrong : palette.accent);
+        dolphinBellyMaterial.color.copy(palette.surface).lerp(palette.accent, lightTheme ? 0.12 : 0.3);
+        dolphinFinMaterial.color.copy(palette.accentStrong);
+        dolphinEyeMaterial.color.copy(palette.ink);
+        dolphinOutlineMaterial.color.copy(lightTheme ? palette.accentStrong : palette.surface);
+        dolphinMouthMaterial.color.copy(palette.ink);
+        dolphinBodyMaterial.opacity = lightTheme ? 0.74 : 0.68;
+        dolphinBellyMaterial.opacity = lightTheme ? 0.62 : 0.58;
+        dolphinFinMaterial.opacity = lightTheme ? 0.72 : 0.66;
+        dolphinOutlineMaterial.opacity = lightTheme ? 0.78 : 0.72;
+        dolphinMouthMaterial.opacity = lightTheme ? 0.68 : 0.62;
+        jellies.forEach((jelly) => {
+          jelly.fill.color.copy(lightTheme ? palette.surface : palette.accent);
+          jelly.edge.color.copy(lightTheme ? palette.accentStrong : palette.surface);
+          jelly.tentacles.forEach((tentacle) => tentacle.material.color.copy(palette.accent));
+        });
         flowRibbons.forEach((ribbon) => ribbon.material.color.copy(lightTheme ? palette.line : palette.accent));
         entities.forEach((entity) => {
           entity.fill.color.copy(palette.surface);
@@ -498,7 +743,9 @@ export default function AmbientWorld() {
         if (rect.width < 1 || rect.height < 1) return;
         width = rect.width;
         height = rect.height;
-        viewHalfWidth = viewHalfHeight * (width / height);
+        const nextHalfWidth = viewHalfHeight * (width / height);
+        const resetPath = !dolphinStream || Math.abs(nextHalfWidth - viewHalfWidth) > 0.28;
+        viewHalfWidth = nextHalfWidth;
         camera.left = -viewHalfWidth;
         camera.right = viewHalfWidth;
         camera.top = viewHalfHeight;
@@ -506,6 +753,7 @@ export default function AmbientWorld() {
         camera.updateProjectionMatrix();
         renderer.setSize(width, height, false);
         updateSafeZones();
+        if (resetPath) resetDolphinPath();
       };
 
       const updatePointerWorld = () => {
@@ -518,9 +766,11 @@ export default function AmbientWorld() {
       const addSafeZoneForce = (x: number, y: number, target: THREE.Vector2, strength: number) => {
         const screenX = x / (viewHalfWidth * 2) + 0.5;
         const screenY = 0.5 - y / (viewHalfHeight * 2);
+        let overlapCount = 0;
         safeZones.forEach((zone) => {
           const margin = 0.035;
           if (screenX < zone.left - margin || screenX > zone.right + margin || screenY < zone.top - margin || screenY > zone.bottom + margin) return;
+          overlapCount += 1;
           const centerX = (zone.left + zone.right) * 0.5;
           const centerY = (zone.top + zone.bottom) * 0.5;
           obstacleForce.set(screenX - centerX, -(screenY - centerY));
@@ -528,6 +778,7 @@ export default function AmbientWorld() {
           obstacleForce.normalize().multiplyScalar(strength);
           target.add(obstacleForce);
         });
+        return overlapCount;
       };
 
       const queueFracture = (entity: OceanEntity, impact: number) => {
@@ -597,7 +848,7 @@ export default function AmbientWorld() {
             ribbon.positions[offset + 2] = curveSample.z;
           }
           ribbon.attribute.needsUpdate = true;
-          ribbon.material.opacity = (lightTheme ? 0.11 : 0.13) * currentProfile.flow;
+          ribbon.material.opacity = (lightTheme ? 0.14 : 0.13) * currentProfile.flow;
         });
       };
 
@@ -662,8 +913,8 @@ export default function AmbientWorld() {
           entity.group.scale.setScalar(breathe);
           entity.fill.color.copy(palette.surface).lerp(palette.accent, entity.hit * 0.38);
           entity.edge.color.copy(lightTheme ? palette.line : palette.accent).lerp(palette.accentStrong, entity.hit * 0.62);
-          entity.fill.opacity = (lightTheme ? 0.15 : 0.1) + entity.hit * 0.08;
-          entity.edge.opacity = (lightTheme ? 0.52 : 0.42) * currentProfile.entity + entity.hit * 0.16;
+          entity.fill.opacity = (lightTheme ? 0.17 : 0.1) + entity.hit * 0.08;
+          entity.edge.opacity = (lightTheme ? 0.58 : 0.42) * currentProfile.entity + entity.hit * 0.16;
         });
 
         for (let firstIndex = 0; firstIndex < activeEntities.length; firstIndex += 1) {
@@ -682,226 +933,305 @@ export default function AmbientWorld() {
         }
       };
 
-      const updateSchool = (time: number, delta: number) => {
-        const seconds = time * 0.001;
-        school.forEach((organism, index) => {
-          schoolingSteer(organism, school, schoolOptions, schoolForce);
-          sampleOceanFlow(organism, seconds + organism.phase, flowForce);
-          organism.vx += (schoolForce.x + flowForce.x * 0.16 * currentProfile.flow) * delta;
-          organism.vy += (schoolForce.y + flowForce.y * 0.16 * currentProfile.flow) * delta;
+      const simulateJellies = (seconds: number, delta: number) => {
+        jellies.forEach((jelly) => {
+          const pulseSample = sampleJellyPulse(seconds / jelly.cycleDuration + jelly.phase / (Math.PI * 2));
+          sampleOceanFlow(jelly, seconds + jelly.phase, flowForce);
+          const desiredHeading = Math.atan2(
+            0.15 + flowForce.y * 0.42 + jelly.vy * 0.24,
+            flowForce.x * 0.62 + jelly.vx * 0.24,
+          );
+          const headingDelta = Math.atan2(
+            Math.sin(desiredHeading - jelly.heading),
+            Math.cos(desiredHeading - jelly.heading),
+          );
+          jelly.heading += headingDelta * Math.min(1, delta * 0.54);
+          jelly.vx += flowForce.x * delta * 0.08 * currentProfile.flow;
+          jelly.vy += (flowForce.y * 0.058 * currentProfile.flow + 0.01) * delta;
+          const thrust = pulseSample.thrust * jelly.pulseStrength
+            * (0.76 + jelly.depth * 0.24) * currentProfile.jelly;
+          jelly.vx += Math.cos(jelly.heading) * thrust * delta;
+          jelly.vy += Math.sin(jelly.heading) * thrust * delta;
 
           if (pointer.active) {
-            pointerRepulsion(organism, pointerWorld, balanced ? 2.2 : 2.7, 7 + pointer.speed * 14, repelForce);
-            organism.vx += repelForce.x * delta;
-            organism.vy += repelForce.y * delta;
+            pointerRepulsion(jelly, pointerWorld, balanced ? 1.55 : 1.8, 3.4 + pointer.speed * 7, repelForce);
+            jelly.vx += repelForce.x * delta;
+            jelly.vy += repelForce.y * delta;
           }
-
           zoneForce.set(0, 0);
-          addSafeZoneForce(organism.x, organism.y, zoneForce, 1.08);
-          organism.vx += zoneForce.x * delta;
-          organism.vy += zoneForce.y * delta;
+          addSafeZoneForce(jelly.x, jelly.y, zoneForce, 0.9);
+          jelly.vx += zoneForce.x * delta;
+          jelly.vy += zoneForce.y * delta;
+          jelly.vx *= Math.exp(-0.54 * delta);
+          jelly.vy *= Math.exp(-0.54 * delta);
+          jelly.x += jelly.vx * delta;
+          jelly.y += jelly.vy * delta;
 
-          const speed = Math.hypot(organism.vx, organism.vy);
-          const maxSpeed = 0.56 + currentProfile.school * 0.28;
-          if (speed > maxSpeed) {
-            organism.vx = organism.vx / speed * maxSpeed;
-            organism.vy = organism.vy / speed * maxSpeed;
+          const margin = 0.9;
+          let wrapped = false;
+          if (jelly.x < -viewHalfWidth - margin) {
+            jelly.x = viewHalfWidth + margin;
+            wrapped = true;
           }
-          organism.vx *= Math.exp(-0.12 * delta);
-          organism.vy *= Math.exp(-0.12 * delta);
-          organism.x += organism.vx * delta;
-          organism.y += organism.vy * delta;
+          if (jelly.x > viewHalfWidth + margin) {
+            jelly.x = -viewHalfWidth - margin;
+            wrapped = true;
+          }
+          if (jelly.y < -viewHalfHeight - margin) {
+            jelly.y = viewHalfHeight + margin;
+            wrapped = true;
+          }
+          if (jelly.y > viewHalfHeight + margin) {
+            jelly.y = -viewHalfHeight - margin;
+            wrapped = true;
+          }
+          if (wrapped) resetJellyTentacles(jelly);
 
-          const margin = 0.45;
-          if (organism.x < -viewHalfWidth - margin) organism.x = viewHalfWidth + margin;
-          if (organism.x > viewHalfWidth + margin) organism.x = -viewHalfWidth - margin;
-          if (organism.y < -viewHalfHeight - margin) organism.y = viewHalfHeight + margin;
-          if (organism.y > viewHalfHeight + margin) organism.y = -viewHalfHeight - margin;
-
-          const angle = Math.atan2(organism.vy, organism.vx);
-          const pulseScale = organism.scale * (1 + Math.sin(seconds * 2 + organism.phase) * 0.06);
-          sharedPosition.set(organism.x, organism.y, organism.depth);
-          sharedQuaternion.setFromAxisAngle(zAxis, angle);
-          sharedScale.set(pulseScale, pulseScale * 0.78, 1);
-          sharedMatrix.compose(sharedPosition, sharedQuaternion, sharedScale);
-          schoolMesh.setMatrixAt(index, sharedMatrix);
+          jelly.tentacles.forEach((tentacle) => {
+            advanceRibbonChain(
+              tentacle.points,
+              {
+                x: tentacle.offset * (1 - pulseSample.contraction * 0.14),
+                y: -0.03 + pulseSample.contraction * 0.075,
+              },
+              delta,
+              0.16 * (1 - pulseSample.contraction * 0.06),
+              20,
+              6.4,
+            );
+          });
         });
-        schoolMesh.instanceMatrix.needsUpdate = true;
-        schoolMaterial.opacity = (lightTheme ? 0.36 : 0.32) * currentProfile.school;
       };
 
-      const updateTailRibbon = (ribbon: CurveRibbon, head: THREE.Vector2, time: number, delta: number, index: number) => {
-        advanceRibbonChain(ribbon.points, head, delta, 0.34 + index * 0.025, 19, 5.8);
-        const seconds = time * 0.001;
-        ribbon.points.forEach((point, pointIndex) => {
-          const fade = pointIndex / Math.max(1, ribbon.points.length - 1);
-          ribbon.curvePoints[pointIndex].set(
-            point.x,
-            point.y + Math.sin(seconds * 1.18 + ribbon.phase + pointIndex * 0.7) * fade * 0.05,
-            -0.22 - index * 0.018,
+      const renderJellies = (seconds: number) => {
+        jellies.forEach((jelly) => {
+          const pulseSample = sampleJellyPulse(seconds / jelly.cycleDuration + jelly.phase / (Math.PI * 2));
+          const ambientBreath = Math.sin(seconds * 0.68 + jelly.phase) * 0.02;
+          const depthProfile = sampleAmbientDepth(jelly.depth);
+          const perspectiveScale = 0.82 + depthProfile.scale * 0.18;
+          jelly.group.position.set(jelly.x, jelly.y, -3.2 + jelly.depth * 2.4);
+          jelly.group.rotation.z = jelly.heading - Math.PI / 2
+            + Math.sin(seconds * 0.46 + jelly.phase) * 0.032;
+          jelly.group.scale.set(
+            jelly.scale * perspectiveScale * (1 - pulseSample.contraction * 0.14 + ambientBreath),
+            jelly.scale * perspectiveScale * (1 + pulseSample.contraction * 0.1 - ambientBreath * 0.7),
+            1,
           );
+          const visibility = (0.72 + jelly.depth * 0.28) * currentProfile.jelly;
+          jelly.fill.opacity = (lightTheme ? 0.3 : 0.22) * visibility;
+          jelly.edge.opacity = (lightTheme ? 0.64 : 0.5) * visibility;
+
+          jelly.tentacles.forEach((tentacle, tentacleIndex) => {
+            tentacle.points.forEach((point, pointIndex) => {
+              const offset = pointIndex * 3;
+              const trail = pointIndex / Math.max(1, tentacle.points.length - 1);
+              tentacle.positions[offset] = point.x
+                + Math.sin(seconds * 1.1 + jelly.phase + tentacleIndex + pointIndex * 0.5)
+                * trail * (0.022 + pulseSample.thrust * 0.016);
+              tentacle.positions[offset + 1] = point.y;
+              tentacle.positions[offset + 2] = -0.02;
+            });
+            tentacle.attribute.needsUpdate = true;
+            tentacle.material.opacity = (lightTheme ? 0.48 : 0.42) * visibility;
+          });
         });
-        for (let sampleIndex = 0; sampleIndex < ribbon.samples; sampleIndex += 1) {
-          ribbon.curve.getPoint(sampleIndex / Math.max(1, ribbon.samples - 1), curveSample);
-          const offset = sampleIndex * 3;
-          ribbon.positions[offset] = curveSample.x;
-          ribbon.positions[offset + 1] = curveSample.y;
-          ribbon.positions[offset + 2] = curveSample.z;
-        }
-        ribbon.attribute.needsUpdate = true;
-        ribbon.material.opacity = (lightTheme ? 0.48 : 0.44) * currentProfile.energy * (index === 1 ? 1 : 0.74);
       };
 
-      const updateRay = (time: number, delta: number) => {
-        const seconds = time * 0.001;
-        rayWanderTimer -= delta;
-        rayKickCooldown = Math.max(0, rayKickCooldown - delta);
-        if (rayWanderTimer <= 0 || rayPosition.distanceTo(rayWanderTarget) < 0.72) {
-          rayWanderTarget.set(
-            (random() * 1.5 - 0.75) * viewHalfWidth,
-            (random() * 1.42 - 0.71) * viewHalfHeight + currentProfile.rayBiasY,
-          );
-          rayWanderTimer = 3.2 + random() * 4.8;
-        }
-
-        rayForce.set(0, 0);
-        rayDesired.copy(rayWanderTarget).sub(rayPosition);
-        if (rayDesired.lengthSq() > 0.001) rayForce.add(rayDesired.normalize().multiplyScalar(0.38));
-        sampleOceanFlow(rayPosition, seconds, flowForce);
-        rayForce.x += flowForce.x * 0.22 * currentProfile.flow;
-        rayForce.y += flowForce.y * 0.22 * currentProfile.flow;
-
-        let nearestEntity: OceanEntity | undefined;
-        let nearestDistance = Number.POSITIVE_INFINITY;
-        activeEntities.forEach((entity) => {
-          if (entity.level <= 0) return;
-          const distance = Math.hypot(entity.x - rayPosition.x, entity.y - rayPosition.y);
-          if (distance < nearestDistance) {
-            nearestDistance = distance;
-            nearestEntity = entity;
-          }
-        });
-        if (nearestEntity && nearestDistance < 4.6) {
-          rayDesired.set(nearestEntity.x - rayPosition.x, nearestEntity.y - rayPosition.y);
-          if (rayDesired.lengthSq() > 0.001) rayForce.add(rayDesired.normalize().multiplyScalar(0.12));
-        }
-
+      const simulateDolphin = (delta: number) => {
+        if (!dolphinStream) return;
+        dolphinSwimClock += delta;
+        dolphinEntityCooldown = Math.max(0, dolphinEntityCooldown - delta);
+        const speed = 0.78 + currentProfile.dolphinSpeed * 0.36;
+        dolphinRouteDistance = advanceDolphinPathStream(
+          dolphinStream,
+          dolphinRouteDistance,
+          speed * delta,
+        ).distance;
+        const routeSample = sampleDolphinBezierPath(dolphinStream.path, dolphinRouteDistance);
+        repelForce.x = 0;
+        repelForce.y = 0;
         if (pointer.active) {
-          pointerRepulsion(rayPosition, pointerWorld, balanced ? 2.7 : 3.2, 7 + pointer.speed * 15, repelForce);
-          rayForce.x += repelForce.x;
-          rayForce.y += repelForce.y;
-        }
-
-        addSafeZoneForce(rayPosition.x, rayPosition.y, rayForce, 1.65);
-        const boundaryX = viewHalfWidth - 0.88;
-        const boundaryY = viewHalfHeight - 0.8;
-        if (Math.abs(rayPosition.x) > boundaryX) rayForce.x += -Math.sign(rayPosition.x) * 2.1;
-        if (Math.abs(rayPosition.y) > boundaryY) rayForce.y += -Math.sign(rayPosition.y) * 2.1;
-
-        rayVelocity.addScaledVector(rayForce, delta);
-        rayVelocity.multiplyScalar(Math.exp(-0.84 * delta));
-        rayVelocity.clampLength(0.18, 0.98 * currentProfile.raySpeed);
-        rayPosition.addScaledVector(rayVelocity, delta);
-
-        activeEntities.forEach((entity) => {
-          const dx = entity.x - rayPosition.x;
-          const dy = entity.y - rayPosition.y;
-          const distance = Math.max(0.001, Math.hypot(dx, dy));
-          const pushDistance = entity.radius + 0.78;
-          if (distance >= pushDistance) return;
-          const nx = dx / distance;
-          const ny = dy / distance;
-          const overlap = pushDistance - distance;
-          entity.x += nx * overlap * 0.58;
-          entity.y += ny * overlap * 0.58;
-          rayPosition.x -= nx * overlap * 0.12;
-          rayPosition.y -= ny * overlap * 0.12;
-          const push = 0.92 + rayVelocity.length() * 0.66;
-          entity.vx += nx * push / Math.max(0.28, entity.mass);
-          entity.vy += ny * push / Math.max(0.28, entity.mass);
-          entity.angularVelocity += (nx - ny) * 0.56;
-          entity.hit = 1;
-          rayVelocity.x -= nx * 0.12;
-          rayVelocity.y -= ny * 0.12;
-          if (rayKickCooldown <= 0) {
-            queueFracture(entity, 0.88 + push * 0.22);
-            rayKickCooldown = 0.48;
-          }
-        });
-
-        const angle = Math.atan2(rayVelocity.y, rayVelocity.x);
-        const wingPulse = Math.sin(seconds * 2.1) * 0.08;
-        const baseScale = balanced ? 0.78 : 0.92;
-        rayGroup.position.set(rayPosition.x, rayPosition.y, -0.24);
-        rayGroup.rotation.z = angle;
-        rayGroup.scale.set(baseScale * (1 + wingPulse * 0.22), baseScale * (1 + wingPulse), 1);
-        rayFillMaterial.opacity = lightTheme ? 0.2 : 0.15;
-        rayEdgeMaterial.opacity = lightTheme ? 0.66 : 0.58;
-
-        rayTails.forEach((tail, index) => {
-          const localX = -0.58 * baseScale;
-          const localY = (index - 1) * 0.15 * baseScale;
-          const head = rayDesired.set(
-            rayPosition.x + Math.cos(angle) * localX - Math.sin(angle) * localY,
-            rayPosition.y + Math.sin(angle) * localX + Math.cos(angle) * localY,
+          pointerRepulsion(
+            dolphinHead,
+            pointerWorld,
+            balanced ? 2.25 : 2.8,
+            5.2 + pointer.speed * 9,
+            repelForce,
           );
-          updateTailRibbon(tail, head, time, delta, index);
+        }
+        zoneForce.set(0, 0);
+        let safeOverlap = 0;
+        dolphinSpine.forEach((point, index) => {
+          if (index % 2 !== 0 && index !== dolphinSpine.length - 1) return;
+          safeOverlap += addSafeZoneForce(point.x, point.y, zoneForce, 0.58);
+        });
+        zoneForce.clampLength(0, 3.1);
+        dolphinTextVisibility = lerp(
+          dolphinTextVisibility,
+          safeOverlap > 0 ? 0.52 : 1,
+          Math.min(1, delta * 4.8),
+        );
+        repelForce.x += zoneForce.x;
+        repelForce.y += zoneForce.y;
+        advanceRepulsionOffset(dolphinRepulsion, repelForce, delta, 1.9, 3.1);
+        dolphinHead.set(
+          routeSample.position.x + dolphinRepulsion.x,
+          routeSample.position.y + dolphinRepulsion.y + currentProfile.dolphinBiasY,
+        );
+        advanceDolphinSpine(dolphinSpine, dolphinHead, dolphinSwimClock, delta, dolphinScale);
+      };
+
+      const interactDolphinWithEntities = () => {
+        activeEntities.forEach((entity) => {
+          let nearestPoint = dolphinSpine[0];
+          let nearestDistance = Number.POSITIVE_INFINITY;
+          dolphinSpine.forEach((point) => {
+            const distance = Math.hypot(entity.x - point.x, entity.y - point.y);
+            if (distance < nearestDistance) {
+              nearestDistance = distance;
+              nearestPoint = point;
+            }
+          });
+          const contactDistance = entity.radius + dolphinScale * 0.42;
+          if (nearestDistance >= contactDistance) return;
+          const distance = Math.max(0.001, nearestDistance);
+          const nx = (entity.x - nearestPoint.x) / distance;
+          const ny = (entity.y - nearestPoint.y) / distance;
+          const overlap = contactDistance - distance;
+          entity.x += nx * overlap * 0.66;
+          entity.y += ny * overlap * 0.66;
+          const push = 0.7 + currentProfile.dolphinSpeed * 0.45;
+          entity.vx += (nx * push + dolphinForward.x * 0.24) / Math.max(0.28, entity.mass);
+          entity.vy += (ny * push + dolphinForward.y * 0.24) / Math.max(0.28, entity.mass);
+          entity.angularVelocity += (nx - ny) * 0.42;
+          entity.hit = 1;
+          dolphinRepulsion.vx -= nx * 0.09;
+          dolphinRepulsion.vy -= ny * 0.09;
+          if (dolphinEntityCooldown <= 0) {
+            queueFracture(entity, 0.86 + push * 0.18);
+            dolphinEntityCooldown = 0.52;
+          }
         });
       };
 
-      const updateParticles = (time: number, delta: number) => {
-        const seconds = time * 0.001;
-        particles.forEach((particle, index) => {
+      const renderDolphin = () => {
+        const headFrame = sampleSpineFrame(dolphinSpine, 0);
+        dolphinForward.set(headFrame.tangent.x, headFrame.tangent.y);
+        updateDolphinGeometry();
+        const visibility = (0.72 + currentProfile.energy * 0.28) * dolphinTextVisibility;
+        dolphinBodyMaterial.opacity = (lightTheme ? 0.74 : 0.68) * visibility;
+        dolphinBellyMaterial.opacity = (lightTheme ? 0.62 : 0.58) * visibility;
+        dolphinFinMaterial.opacity = (lightTheme ? 0.72 : 0.66) * visibility;
+        dolphinOutlineMaterial.opacity = (lightTheme ? 0.78 : 0.72) * visibility;
+        dolphinMouthMaterial.opacity = (lightTheme ? 0.68 : 0.62) * visibility;
+      };
+
+      const simulateParticles = (seconds: number, delta: number) => {
+        particles.forEach((particle) => {
           particle.vx *= Math.exp(-2.4 * delta);
           particle.vy *= Math.exp(-2.4 * delta);
+          if (pointer.active) {
+            pointerRepulsion(
+              particle,
+              pointerWorld,
+              (balanced ? 1.45 : 1.85) * (0.78 + particle.depth * 0.3),
+              (3.2 + pointer.speed * 8) * particle.interaction,
+              repelForce,
+            );
+            particle.vx += repelForce.x * delta;
+            particle.vy += repelForce.y * delta;
+          }
           if (pulse > 0.01) {
             const dx = particle.x - pulseOrigin.x;
             const dy = particle.y - pulseOrigin.y;
             const distance = Math.max(0.2, Math.hypot(dx, dy));
-            const strength = Math.max(0, 1 - distance / 5) * pulse * delta * 1.5;
+            const strength = Math.max(0, 1 - distance / 5)
+              * pulse * delta * 1.5 * particle.interaction;
             particle.vx += dx / distance * strength;
             particle.vy += dy / distance * strength;
           }
+          const dolphinDistance = Math.max(
+            0.25,
+            Math.hypot(particle.x - dolphinHead.x, particle.y - dolphinHead.y),
+          );
+          if (dolphinDistance < 1.5) {
+            const wake = (1 - dolphinDistance / 1.5) * delta * 0.26 * particle.interaction;
+            particle.vx -= dolphinForward.x * wake;
+            particle.vy -= dolphinForward.y * wake;
+          }
           sampleOceanFlow(particle, seconds + particle.phase, flowForce);
-          particle.x += (flowForce.x * 0.035 + particle.vx) * delta;
-          particle.y += (particle.speed * currentProfile.particle + flowForce.y * 0.025 + particle.vy) * delta;
+          particle.x += (flowForce.x * 0.035 * particle.drift + particle.vx) * delta;
+          particle.y += (
+            particle.speed * currentProfile.particle * particle.drift
+            + flowForce.y * 0.025 * particle.drift
+            + particle.vy
+          ) * delta;
           if (particle.y > viewHalfHeight + 0.3) {
             particle.y = -viewHalfHeight - 0.3;
             particle.x = random() * viewHalfWidth * 2 - viewHalfWidth;
           }
           if (particle.x < -viewHalfWidth - 0.4) particle.x = viewHalfWidth + 0.4;
           if (particle.x > viewHalfWidth + 0.4) particle.x = -viewHalfWidth - 0.4;
-          const twinkle = 0.54 + Math.sin(seconds * 0.92 + particle.phase) * 0.34;
-          const scale = particle.size * twinkle * (0.72 + currentProfile.particle * 0.28);
-          sharedMatrix.makeScale(scale, scale, scale);
-          sharedMatrix.setPosition(particle.x, particle.y, particle.z);
-          particleMesh.setMatrixAt(index, sharedMatrix);
         });
-        particleMesh.instanceMatrix.needsUpdate = true;
-        particleMaterial.opacity = (balanced ? 0.15 : 0.2) * (0.72 + currentProfile.particle * 0.28);
+      };
+
+      const renderParticles = (seconds: number) => {
+        particleLayers.forEach((layer) => {
+          layer.particles.forEach((particle, index) => {
+            const twinkle = 0.68 + Math.sin(seconds * (0.72 + particle.speed) + particle.phase) * 0.28;
+            const scale = particle.size * particle.depthScale * twinkle
+              * (0.74 + currentProfile.particle * 0.26);
+            sharedMatrix.makeScale(scale, scale, scale);
+            sharedMatrix.setPosition(
+              particle.x + Math.sin(seconds * 0.32 + particle.phase) * 0.05 * particle.drift,
+              particle.y + Math.cos(seconds * 0.27 + particle.phase) * 0.04 * particle.drift,
+              particle.z,
+            );
+            layer.mesh.setMatrixAt(index, sharedMatrix);
+            sharedColor.copy(lightTheme ? palette.surface : palette.ink).lerp(
+              palette.accent,
+              Math.min(1, 0.32 + particle.depthOpacity * 0.92),
+            );
+            sharedColor.lerp(palette.accentStrong, Math.max(0, twinkle - 0.5) * 0.42);
+            layer.mesh.setColorAt(index, sharedColor);
+          });
+          layer.mesh.instanceMatrix.needsUpdate = true;
+          if (layer.mesh.instanceColor) layer.mesh.instanceColor.needsUpdate = true;
+          const representativeDepth = (layer.depthRange[0] + layer.depthRange[1]) * 0.5;
+          layer.material.opacity = sampleAmbientDepth(representativeDepth).opacity
+            * (balanced ? 0.55 : 0.62) * (0.7 + currentProfile.particle * 0.3);
+        });
       };
 
       const render = (time: number) => {
         if (destroyed || !pageVisible) return;
-        const delta = Math.min(0.04, Math.max(0.001, (time - lastTime) / 1000));
+        const frameDelta = Math.max(0, (time - lastTime) / 1000);
         lastTime = time;
-        const profileEase = Math.min(1, delta * 0.72);
+        const substeps = calculateSimulationSubsteps(frameDelta);
+        const profileEase = Math.min(1, substeps.simulatedDelta * 0.72);
         currentProfile.energy = lerp(currentProfile.energy, targetProfile.energy, profileEase);
         currentProfile.entity = lerp(currentProfile.entity, targetProfile.entity, profileEase);
         currentProfile.particle = lerp(currentProfile.particle, targetProfile.particle, profileEase);
-        currentProfile.school = lerp(currentProfile.school, targetProfile.school, profileEase);
-        currentProfile.raySpeed = lerp(currentProfile.raySpeed, targetProfile.raySpeed, profileEase);
-        currentProfile.rayBiasY = lerp(currentProfile.rayBiasY, targetProfile.rayBiasY, profileEase);
+        currentProfile.jelly = lerp(currentProfile.jelly, targetProfile.jelly, profileEase);
+        currentProfile.dolphinSpeed = lerp(currentProfile.dolphinSpeed, targetProfile.dolphinSpeed, profileEase);
+        currentProfile.dolphinBiasY = lerp(currentProfile.dolphinBiasY, targetProfile.dolphinBiasY, profileEase);
         currentProfile.flow = lerp(currentProfile.flow, targetProfile.flow, profileEase);
-        pointer.speed *= Math.exp(-3.2 * delta);
-        pulse *= Math.exp(-2.8 * delta);
+        pointer.speed *= Math.exp(-3.2 * substeps.simulatedDelta);
+        pulse *= Math.exp(-2.8 * substeps.simulatedDelta);
         updatePointerWorld();
-        updateFlowRibbons(time);
-        updateEntities(time, delta);
-        updateSchool(time, delta);
-        updateRay(time, delta);
+        for (let step = 0; step < substeps.count; step += 1) {
+          simulationClock += substeps.delta;
+          simulateDolphin(substeps.delta);
+          simulateJellies(simulationClock, substeps.delta);
+          simulateParticles(simulationClock, substeps.delta);
+        }
+        updateFlowRibbons(simulationClock * 1000);
+        updateEntities(simulationClock * 1000, substeps.simulatedDelta);
+        interactDolphinWithEntities();
         fractureQueue.forEach(fractureEntity);
-        updateParticles(time, delta);
+        renderDolphin();
+        renderJellies(simulationClock);
+        renderParticles(simulationClock);
         renderer.render(scene, camera);
         if (!hasRendered) {
           host.dataset.status = "ready";
@@ -960,8 +1290,8 @@ export default function AmbientWorld() {
         const direction = (event as CustomEvent<{ direction?: number }>).detail?.direction || 1;
         pulseOrigin.set(viewHalfWidth * 0.26, -0.1);
         pulse = 1;
-        rayVelocity.x += direction * 0.28;
-        rayVelocity.y += 0.18;
+        dolphinRepulsion.vx += direction * 0.24;
+        dolphinRepulsion.vy += 0.14;
       };
 
       const handleVisibility = () => {
@@ -1015,7 +1345,7 @@ export default function AmbientWorld() {
       data-status="loading"
       data-backend="static"
       data-quality="static"
-      data-creature="space-ray"
+      data-creature="same-side-dolphin"
       data-pointer-force="repel"
       data-entity-count="0"
       data-organism-count="0"
@@ -1030,9 +1360,15 @@ export default function AmbientWorld() {
         <span className="ambient-static-shape ambient-static-shape-one"></span>
         <span className="ambient-static-shape ambient-static-shape-two"></span>
         <span className="ambient-static-shape ambient-static-shape-three"></span>
-        <span className="ambient-static-ray">
-          {Array.from({ length: 3 }, (_, index) => <i key={index}></i>)}
-        </span>
+        <svg className="ambient-static-dolphin" viewBox="-4.05 -1.05 4.7 2.1">
+          <path className="ambient-static-dolphin-fin" d="M-1.12-.58C-1.38-.95-1.69-1.02-1.91-.46C-1.62-.53-1.36-.57-1.12-.58Z" />
+          <path className="ambient-static-dolphin-tail" d="M-2.93-.08C-3.19-.14-3.39-.4-3.76-.49C-3.67-.24-3.52-.08-3.21-.005C-3.52.04-3.72.18-3.86.42C-3.43.37-3.2.16-2.95.07Z" />
+          <path className="ambient-static-dolphin-body" d="M.43-.025C.35-.055.23-.075.08-.105C.09-.31-.06-.49-.31-.56C-.86-.72-1.62-.61-2.19-.39C-2.5-.27-2.77-.17-3.02-.09L-3.04.075C-2.76.13-2.49.2-2.2.31C-1.61.52-.9.53-.39.37C-.11.28.09.17.29.135C.37.115.44.055.43-.025Z" />
+          <path className="ambient-static-dolphin-belly" d="M.38.045C.21.08.04.17-.2.25C-.72.44-1.42.46-2.18.3C-1.55.53-.86.53-.38.37C-.1.28.1.17.29.135C.35.11.39.075.38.045Z" />
+          <path className="ambient-static-dolphin-fin" d="M-.68.23C-.88.52-1.12.91-1.42.93C-1.33.53-1.14.24-.77.12C-.71.14-.68.18-.68.23Z" />
+          <circle className="ambient-static-dolphin-eye" cx="-.13" cy="-.22" r=".052" />
+          <path className="ambient-static-dolphin-mouth" d="M.38.065C.3.085.18.11.06.115" />
+        </svg>
         <span className="ambient-static-pixel ambient-static-pixel-one"></span>
         <span className="ambient-static-pixel ambient-static-pixel-two"></span>
         <span className="ambient-static-pixel ambient-static-pixel-three"></span>

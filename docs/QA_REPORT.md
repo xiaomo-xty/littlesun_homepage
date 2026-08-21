@@ -359,4 +359,31 @@
 
 ### 结论
 
-独立动画 Demo 满足当前 WebGPU、WebGL2、静态降级、响应式、交互和构建门槛，可以交由用户审核。未获得用户确认前，不允许合入 `develop` 或进入主页集成。
+独立动画 Demo 当时满足 WebGPU、WebGL2、静态降级、响应式、交互和构建门槛，并进入用户审核。该门禁随后于 2026-08-22 解除，正式集成结果如下。
+
+## 2026-08-22 / v0.6 Homepage Creature Integration QA
+
+### 环境与范围
+
+- 分支：`feature/v0.6-homepage-creature-integration`
+- 正式主页：`/`
+- 干净开发会话：`http://127.0.0.1:4334/`
+- 桌面：1280 x 720；移动：390 x 844
+- 后端：WebGPU、强制 WebGL2、强制 static
+
+### 结果
+
+- WebGPU 深浅主题均为 `ready`，`data-creature="same-side-dolphin"`，无 console warning/error。
+- WebGL2 为 `balanced / ready`，同侧海豚、水母、粒子与实体持续运动，无 console warning/error。
+- static 模式画布透明度为 0，同侧海豚静态轮廓可见，无旧鳐鱼残留。
+- 移动端为 2 只水母、0 横向溢出；海豚在正文安全区内自动淡化。
+- 项目区水合成功，筛选和切牌按钮可用；切到“商业 C++ 开发”后背景仍为 ready，实体碎裂计数继续变化。
+- WebGPU 连续帧变化 12,670 字节，WebGL2 连续帧变化 3,362 字节，画布非空且持续更新。
+
+### 质量门禁
+
+- `bun test`：28 passed、0 failed。
+- `bun run check`：0 errors、0 warnings、0 hints。
+- `bun run build`：2 个静态路由构建成功。
+- `git diff --check`：通过。
+- 未修改 `D:\project\blog`。
