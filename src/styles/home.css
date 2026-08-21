@@ -119,7 +119,7 @@
 }
 
 .ambient-world[data-status="ready"]:not([data-backend="static"]) canvas {
-  opacity: 0.48;
+  opacity: 0.54;
 }
 
 .ambient-static-fallback {
@@ -192,44 +192,41 @@
   transform: rotate(-4deg);
 }
 
-.ambient-static-ray {
+.ambient-static-dolphin {
   position: absolute;
-  top: 34%;
-  right: 24%;
-  width: 86px;
-  height: 46px;
-  border: 2px solid color-mix(in srgb, var(--accent-strong) 78%, transparent);
-  border-radius: 52% 48% 58% 42% / 20% 20% 80% 80%;
-  background: color-mix(in srgb, var(--accent) 14%, transparent);
-  opacity: 0.58;
-  transform: rotate(-10deg) skewX(-6deg);
+  top: 32%;
+  right: 18%;
+  width: min(25vw, 320px);
+  overflow: visible;
+  opacity: 0.48;
+  transform: rotate(-8deg);
 }
 
-.ambient-static-ray::before {
-  position: absolute;
-  top: 17px;
-  right: -20px;
-  width: 34px;
-  height: 10px;
-  border-top: 2px solid color-mix(in srgb, var(--accent-strong) 72%, transparent);
-  border-radius: 50%;
-  content: "";
+.ambient-static-dolphin-body {
+  fill: color-mix(in srgb, var(--accent) 68%, transparent);
+  stroke: var(--accent-strong);
+  stroke-width: 0.025;
 }
 
-.ambient-static-ray i {
-  position: absolute;
-  top: 23px;
-  left: -58px;
-  width: 68px;
-  height: 28px;
-  border-top: 1px solid var(--accent);
-  border-radius: 50%;
-  transform-origin: right center;
+.ambient-static-dolphin-fin,
+.ambient-static-dolphin-tail {
+  fill: var(--accent-strong);
 }
 
-.ambient-static-ray i:nth-child(1) { transform: rotate(-8deg); }
-.ambient-static-ray i:nth-child(2) { transform: rotate(2deg) translateY(4px); }
-.ambient-static-ray i:nth-child(3) { transform: rotate(10deg) translateY(8px); }
+.ambient-static-dolphin-belly {
+  fill: color-mix(in srgb, var(--surface-strong) 76%, var(--accent));
+}
+
+.ambient-static-dolphin-mouth {
+  fill: none;
+  stroke: var(--ink);
+  stroke-linecap: round;
+  stroke-width: 0.025;
+}
+
+.ambient-static-dolphin-eye {
+  fill: var(--ink);
+}
 
 .ambient-static-pixel {
   position: absolute;
@@ -250,7 +247,7 @@
     radial-gradient(ellipse at center, transparent 46%, rgb(var(--page-rgb) / 0.34) 100%);
   backdrop-filter: blur(1.1px) saturate(0.88);
   -webkit-backdrop-filter: blur(1.1px) saturate(0.88);
-  opacity: 0.66;
+  opacity: 0.58;
 }
 
 :root[data-theme="dark"] .ambient-world[data-status="ready"]:not([data-backend="static"]) canvas {
@@ -258,7 +255,7 @@
 }
 
 :root[data-theme="dark"] .ambient-postprocess {
-  opacity: 0.52;
+  opacity: 0.5;
 }
 
 :root[data-theme="dark"] .ambient-static-shape {
@@ -266,9 +263,8 @@
   opacity: 0.3;
 }
 
-:root[data-theme="dark"] .ambient-static-ray {
-  background: color-mix(in srgb, var(--accent) 10%, transparent);
-  opacity: 0.5;
+:root[data-theme="dark"] .ambient-static-dolphin {
+  opacity: 0.42;
 }
 
 main {
@@ -1712,9 +1708,10 @@ h3 {
     width: 62vw;
   }
 
-  .ambient-static-ray {
-    right: 12%;
-    transform: scale(0.76) rotate(-10deg) skewX(-6deg);
+  .ambient-static-dolphin {
+    right: 4%;
+    width: 58vw;
+    transform: rotate(-8deg);
   }
 
   .about-section,
