@@ -25,6 +25,8 @@ import {
 import {
   advanceRibbonChain,
   pointerRepulsion,
+  sampleAmbientDepth,
+  sampleJellyPulse,
   sampleOceanFlow,
   type RibbonPoint,
   type Vector2Like,
@@ -37,10 +39,22 @@ type BackendFlags = { isWebGPUBackend?: boolean; isWebGLBackend?: boolean };
 type PixelParticle = Vector2Like & {
   vx: number;
   vy: number;
+  depth: number;
+  depthScale: number;
+  depthOpacity: number;
+  drift: number;
+  interaction: number;
   z: number;
   size: number;
   speed: number;
   phase: number;
+};
+
+type ParticleLayer = {
+  mesh: THREE.InstancedMesh;
+  material: THREE.MeshBasicMaterial;
+  particles: PixelParticle[];
+  depthRange: readonly [number, number];
 };
 
 type Tentacle = {
@@ -54,8 +68,12 @@ type Tentacle = {
 type DemoJelly = Vector2Like & {
   vx: number;
   vy: number;
+  depth: number;
   phase: number;
   scale: number;
+  cycleDuration: number;
+  pulseStrength: number;
+  heading: number;
   group: THREE.Group;
   fill: THREE.MeshBasicMaterial;
   edge: THREE.LineBasicMaterial;
@@ -392,26 +410,45 @@ export default function CreatureDemo() {
 
       const particleCount = balanced ? 72 : 124;
       const particleGeometry = register(new THREE.BoxGeometry(0.055, 0.055, 0.028));
-      const particleMaterial = register(new THREE.MeshBasicMaterial({
-        color: 0xffffff,
-        transparent: true,
-        opacity: 0.48,
-        depthWrite: false,
-        vertexColors: true,
-      }));
-      const particleMesh = new THREE.InstancedMesh(particleGeometry, particleMaterial, particleCount);
-      particleMesh.frustumCulled = false;
-      world.add(particleMesh);
-      const particles: PixelParticle[] = Array.from({ length: particleCount }, () => ({
-        x: random() * 14 - 7,
-        y: random() * 10 - 5,
-        z: -3.4 - random() * 2.8,
-        vx: 0,
-        vy: 0,
-        size: 0.5 + random() * 1.65,
-        speed: 0.035 + random() * 0.13,
-        phase: random() * Math.PI * 2,
-      }));
+      const particleLayerSpecs = [
+        { count: balanced ? 42 : 70, depthRange: [0.02, 0.34] as const, renderOrder: 28 },
+        { count: balanced ? 22 : 38, depthRange: [0.38, 0.72] as const, renderOrder: 72 },
+        { count: balanced ? 8 : 16, depthRange: [0.8, 1] as const, renderOrder: 112 },
+      ];
+      const particleLayers: ParticleLayer[] = particleLayerSpecs.map((spec) => {
+        const material = register(new THREE.MeshBasicMaterial({
+          color: 0xffffff,
+          transparent: true,
+          depthTest: false,
+          depthWrite: false,
+          vertexColors: true,
+        }));
+        const mesh = new THREE.InstancedMesh(particleGeometry, material, spec.count);
+        mesh.frustumCulled = false;
+        mesh.renderOrder = spec.renderOrder;
+        world.add(mesh);
+        const particles = Array.from({ length: spec.count }, (): PixelParticle => {
+          const depth = spec.depthRange[0] + random() * (spec.depthRange[1] - spec.depthRange[0]);
+          const depthProfile = sampleAmbientDepth(depth);
+          return {
+            x: random() * 14 - 7,
+            y: random() * 10 - 5,
+            depth,
+            depthScale: depthProfile.scale,
+            depthOpacity: depthProfile.opacity,
+            drift: depthProfile.drift,
+            interaction: depthProfile.interaction,
+            z: -5.4 + depth * 5.8,
+            vx: 0,
+            vy: 0,
+            size: 0.68 + random() * 0.92,
+            speed: 0.035 + random() * 0.13,
+            phase: random() * Math.PI * 2,
+          };
+        });
+        return { mesh, material, particles, depthRange: spec.depthRange };
+      });
+      const particles = particleLayers.flatMap((layer) => layer.particles);
 
       const makeFlowLine = (index: number): FlowLine => {
         const controlPoints = Array.from({ length: balanced ? 6 : 8 }, () => new THREE.Vector3());
@@ -459,15 +496,23 @@ export default function CreatureDemo() {
         });
       };
 
-      const createJelly = (x: number, y: number, scale: number, phase: number) => {
-        const fill = register(new THREE.MeshBasicMaterial({ transparent: true, side: THREE.DoubleSide, depthWrite: false }));
-        const edge = register(new THREE.LineBasicMaterial({ transparent: true, depthWrite: false }));
+      const createJelly = (x: number, y: number, scale: number, phase: number, depth: number) => {
+        const fill = register(new THREE.MeshBasicMaterial({
+          transparent: true,
+          side: THREE.DoubleSide,
+          depthTest: false,
+          depthWrite: false,
+        }));
+        const edge = register(new THREE.LineBasicMaterial({ transparent: true, depthTest: false, depthWrite: false }));
         const bell = new THREE.Mesh(jellyGeometry, fill);
         const outline = new THREE.LineSegments(jellyEdgeGeometry, edge);
         const group = new THREE.Group();
         group.add(bell, outline);
-        group.position.set(x, y, -0.8);
+        group.position.set(x, y, -3.2 + depth * 2.4);
         group.frustumCulled = false;
+        const renderOrder = 54 + Math.round(depth * 30);
+        bell.renderOrder = renderOrder;
+        outline.renderOrder = renderOrder + 1;
         world.add(group);
 
         const tentacles: Tentacle[] = Array.from({ length: 4 }, (_, tentacleIndex) => {
@@ -483,9 +528,14 @@ export default function CreatureDemo() {
           const attribute = new THREE.BufferAttribute(positions, 3);
           attribute.setUsage(THREE.DynamicDrawUsage);
           geometry.setAttribute("position", attribute);
-          const material = register(new THREE.LineBasicMaterial({ transparent: true, depthWrite: false }));
+          const material = register(new THREE.LineBasicMaterial({
+            transparent: true,
+            depthTest: false,
+            depthWrite: false,
+          }));
           const line = new THREE.Line(geometry, material);
           line.frustumCulled = false;
+          line.renderOrder = renderOrder + 2;
           group.add(line);
           return { points, positions, attribute, material, offset };
         });
@@ -495,8 +545,12 @@ export default function CreatureDemo() {
           y,
           vx: 0.05 + random() * 0.08,
           vy: 0.025 + random() * 0.05,
+          depth,
           phase,
           scale,
+          cycleDuration: 2.75 + random() * 0.9,
+          pulseStrength: 0.34 + random() * 0.16,
+          heading: Math.PI * (0.34 + random() * 0.32),
           group,
           fill,
           edge,
@@ -504,9 +558,9 @@ export default function CreatureDemo() {
         });
       };
 
-      createJelly(-3.8, 1.7, 0.72, 0.2);
-      createJelly(3.35, -1.55, 0.58, 2.5);
-      if (!balanced) createJelly(1.1, 2.65, 0.42, 4.1);
+      createJelly(-3.8, 1.7, 0.72, 0.2, 0.62);
+      createJelly(3.35, -1.55, 0.58, 2.5, 0.38);
+      if (!balanced) createJelly(1.1, 2.65, 0.42, 4.1, 0.72);
 
       const dolphinParts: DolphinPart[] = [];
       const createMaterial = (color: number) => register(new THREE.MeshBasicMaterial({
@@ -714,6 +768,7 @@ export default function CreatureDemo() {
           jelly.y = [1.7, -1.55, 2.65][index] || 0;
           jelly.vx = 0.05 + index * 0.018;
           jelly.vy = 0.035;
+          jelly.heading = Math.PI * (0.42 + index * 0.08);
           resetTentacles(jelly);
         });
         particles.forEach((particle) => {
@@ -802,16 +857,29 @@ export default function CreatureDemo() {
 
       const simulateJellies = (seconds: number, delta: number) => {
         jellies.forEach((jelly) => {
+          const pulseSample = sampleJellyPulse(seconds / jelly.cycleDuration + jelly.phase / (Math.PI * 2));
           sampleOceanFlow(jelly, seconds + jelly.phase, flowForce);
-          jelly.vx += flowForce.x * delta * 0.1;
-          jelly.vy += (flowForce.y * 0.07 + 0.018) * delta;
+          const desiredHeading = Math.atan2(
+            0.16 + flowForce.y * 0.42 + jelly.vy * 0.24,
+            flowForce.x * 0.62 + jelly.vx * 0.24,
+          );
+          const headingDelta = Math.atan2(
+            Math.sin(desiredHeading - jelly.heading),
+            Math.cos(desiredHeading - jelly.heading),
+          );
+          jelly.heading += headingDelta * Math.min(1, delta * 0.58);
+          jelly.vx += flowForce.x * delta * 0.09;
+          jelly.vy += (flowForce.y * 0.065 + 0.012) * delta;
+          const thrust = pulseSample.thrust * jelly.pulseStrength * (0.82 + jelly.depth * 0.28);
+          jelly.vx += Math.cos(jelly.heading) * thrust * delta;
+          jelly.vy += Math.sin(jelly.heading) * thrust * delta;
           if (pointer.active) {
             pointerRepulsion(jelly, pointerWorld, 1.7, 3.8 + pointer.speed * 8, repelForce);
             jelly.vx += repelForce.x * delta;
             jelly.vy += repelForce.y * delta;
           }
-          jelly.vx *= Math.exp(-0.45 * delta);
-          jelly.vy *= Math.exp(-0.45 * delta);
+          jelly.vx *= Math.exp(-0.5 * delta);
+          jelly.vy *= Math.exp(-0.5 * delta);
           jelly.x += jelly.vx * delta;
           jelly.y += jelly.vy * delta;
 
@@ -836,34 +904,53 @@ export default function CreatureDemo() {
           if (wrapped) resetTentacles(jelly);
 
           jelly.tentacles.forEach((tentacle) => {
-            const anchor = { x: tentacle.offset, y: -0.03 };
-            advanceRibbonChain(tentacle.points, anchor, delta, 0.16, 20, 6.4);
+            const anchor = {
+              x: tentacle.offset * (1 - pulseSample.contraction * 0.14),
+              y: -0.03 + pulseSample.contraction * 0.075,
+            };
+            advanceRibbonChain(
+              tentacle.points,
+              anchor,
+              delta,
+              0.16 * (1 - pulseSample.contraction * 0.06),
+              20,
+              6.4,
+            );
           });
         });
       };
 
       const renderJellies = (seconds: number) => {
         jellies.forEach((jelly) => {
-          const breath = Math.sin(seconds * 1.45 + jelly.phase);
-          const scaleX = jelly.scale * (1 + breath * 0.08);
-          const scaleY = jelly.scale * (1 - breath * 0.12);
-          jelly.group.position.set(jelly.x, jelly.y, -0.82);
-          jelly.group.rotation.z = Math.sin(seconds * 0.4 + jelly.phase) * 0.09;
+          const pulseSample = sampleJellyPulse(seconds / jelly.cycleDuration + jelly.phase / (Math.PI * 2));
+          const ambientBreath = Math.sin(seconds * 0.68 + jelly.phase) * 0.022;
+          const depthProfile = sampleAmbientDepth(jelly.depth);
+          const perspectiveScale = 0.82 + depthProfile.scale * 0.18;
+          const scaleX = jelly.scale * perspectiveScale
+            * (1 - pulseSample.contraction * 0.14 + ambientBreath);
+          const scaleY = jelly.scale * perspectiveScale
+            * (1 + pulseSample.contraction * 0.1 - ambientBreath * 0.7);
+          jelly.group.position.set(jelly.x, jelly.y, -3.2 + jelly.depth * 2.4);
+          jelly.group.rotation.z = jelly.heading - Math.PI / 2
+            + Math.sin(seconds * 0.46 + jelly.phase) * 0.035;
           jelly.group.scale.set(scaleX, scaleY, 1);
-          jelly.fill.opacity = activeTheme === "dark" ? 0.38 : 0.3;
-          jelly.edge.opacity = activeTheme === "dark" ? 0.72 : 0.6;
+          const depthVisibility = 0.72 + jelly.depth * 0.28;
+          jelly.fill.opacity = (activeTheme === "dark" ? 0.42 : 0.34) * depthVisibility;
+          jelly.edge.opacity = (activeTheme === "dark" ? 0.76 : 0.64) * depthVisibility;
 
           jelly.tentacles.forEach((tentacle, tentacleIndex) => {
             tentacle.points.forEach((point, pointIndex) => {
               const offset = pointIndex * 3;
               const trail = pointIndex / Math.max(1, tentacle.points.length - 1);
               tentacle.positions[offset] = point.x
-                + Math.sin(seconds * 1.1 + jelly.phase + tentacleIndex + pointIndex * 0.5) * trail * 0.022;
+                + Math.sin(seconds * 1.1 + jelly.phase + tentacleIndex + pointIndex * 0.5)
+                * trail * (0.022 + pulseSample.thrust * 0.018);
               tentacle.positions[offset + 1] = point.y;
               tentacle.positions[offset + 2] = -0.02;
             });
             tentacle.attribute.needsUpdate = true;
-            tentacle.material.opacity = (activeTheme === "dark" ? 0.62 : 0.5) * (0.75 + jelly.scale * 0.25);
+            tentacle.material.opacity = (activeTheme === "dark" ? 0.64 : 0.52)
+              * depthVisibility * (0.75 + jelly.scale * 0.25);
           });
         });
       };
@@ -873,7 +960,13 @@ export default function CreatureDemo() {
           particle.vx *= Math.exp(-2.1 * delta);
           particle.vy *= Math.exp(-2.1 * delta);
           if (pointer.active) {
-            pointerRepulsion(particle, pointerWorld, mobile ? 1.45 : 1.9, 3.6 + pointer.speed * 9, repelForce);
+            pointerRepulsion(
+              particle,
+              pointerWorld,
+              (mobile ? 1.45 : 1.9) * (0.78 + particle.depth * 0.3),
+              (3.6 + pointer.speed * 9) * particle.interaction,
+              repelForce,
+            );
             particle.vx += repelForce.x * delta;
             particle.vy += repelForce.y * delta;
           }
@@ -881,19 +974,20 @@ export default function CreatureDemo() {
             const dx = particle.x - pulseOrigin.x;
             const dy = particle.y - pulseOrigin.y;
             const distance = Math.max(0.18, Math.hypot(dx, dy));
-            const strength = Math.max(0, 1 - distance / 4.6) * pulse * delta * 1.8;
+            const strength = Math.max(0, 1 - distance / 4.6)
+              * pulse * delta * 1.8 * particle.interaction;
             particle.vx += dx / distance * strength;
             particle.vy += dy / distance * strength;
           }
           const dolphinDistance = Math.max(0.25, Math.hypot(particle.x - dolphinHead.x, particle.y - dolphinHead.y));
           if (dolphinDistance < 1.6) {
-            const wake = (1 - dolphinDistance / 1.6) * delta * 0.3;
+            const wake = (1 - dolphinDistance / 1.6) * delta * 0.3 * particle.interaction;
             particle.vx -= dolphinForward.x * wake;
             particle.vy -= dolphinForward.y * wake;
           }
           sampleOceanFlow(particle, seconds + particle.phase, flowForce);
-          particle.x += (flowForce.x * 0.055 + particle.vx) * delta;
-          particle.y += (particle.speed + flowForce.y * 0.04 + particle.vy) * delta;
+          particle.x += (flowForce.x * 0.055 * particle.drift + particle.vx) * delta;
+          particle.y += (particle.speed * particle.drift + flowForce.y * 0.04 * particle.drift + particle.vy) * delta;
           if (particle.y > viewHalfHeight + 0.35) {
             particle.y = -viewHalfHeight - 0.35;
             particle.x = random() * viewHalfWidth * 2 - viewHalfWidth;
@@ -904,22 +998,30 @@ export default function CreatureDemo() {
       };
 
       const renderParticles = (seconds: number) => {
-        particles.forEach((particle, index) => {
-          const twinkle = 0.66 + Math.sin(seconds * (0.78 + particle.speed) + particle.phase) * 0.32;
-          const scale = particle.size * twinkle;
-          sharedMatrix.makeScale(scale, scale, scale);
-          sharedMatrix.setPosition(
-            particle.x + Math.sin(seconds * 0.32 + particle.phase) * 0.06,
-            particle.y + Math.cos(seconds * 0.27 + particle.phase) * 0.045,
-            particle.z,
-          );
-          particleMesh.setMatrixAt(index, sharedMatrix);
-          sharedColor.copy(palette.accent).lerp(palette.accentSoft, clamp01(twinkle - 0.46) * 0.64);
-          particleMesh.setColorAt(index, sharedColor);
+        particleLayers.forEach((layer) => {
+          layer.particles.forEach((particle, index) => {
+            const twinkle = 0.68 + Math.sin(seconds * (0.72 + particle.speed) + particle.phase) * 0.28;
+            const scale = particle.size * particle.depthScale * twinkle;
+            sharedMatrix.makeScale(scale, scale, scale);
+            sharedMatrix.setPosition(
+              particle.x + Math.sin(seconds * 0.32 + particle.phase) * 0.055 * particle.drift,
+              particle.y + Math.cos(seconds * 0.27 + particle.phase) * 0.042 * particle.drift,
+              particle.z,
+            );
+            layer.mesh.setMatrixAt(index, sharedMatrix);
+            sharedColor.copy(palette.page).lerp(
+              palette.accent,
+              clamp01(0.32 + particle.depthOpacity * 0.92),
+            );
+            sharedColor.lerp(palette.accentSoft, clamp01(twinkle - 0.5) * 0.46);
+            layer.mesh.setColorAt(index, sharedColor);
+          });
+          layer.mesh.instanceMatrix.needsUpdate = true;
+          if (layer.mesh.instanceColor) layer.mesh.instanceColor.needsUpdate = true;
+          const representativeDepth = (layer.depthRange[0] + layer.depthRange[1]) * 0.5;
+          layer.material.opacity = sampleAmbientDepth(representativeDepth).opacity
+            * (activeTheme === "dark" ? 0.92 : 0.8);
         });
-        particleMesh.instanceMatrix.needsUpdate = true;
-        if (particleMesh.instanceColor) particleMesh.instanceColor.needsUpdate = true;
-        particleMaterial.opacity = activeTheme === "dark" ? 0.48 : 0.38;
       };
 
       const render = (time: number) => {
