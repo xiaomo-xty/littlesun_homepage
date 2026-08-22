@@ -1055,3 +1055,31 @@
 
 - 当前浏览器接口不能模拟 `prefers-reduced-motion`，该路径通过 static 选择逻辑、CSS 媒体覆盖和代码审计确认。
 - 姓名、人像、简历、邮箱、文章配图与真实文章链接仍为明确占位；`D:\project\blog` 未修改。
+
+## 2026-08-23 / v0.12 Jelly Tow and Personal Visual Stage
+
+今天完成：
+
+- 从 `develop` 创建 `feature/v0.12-jelly-tow-and-visual-stage`，只升级首次进入叙事与 Hero 右侧视觉区域。
+- 将 `setTimeout` 叠加的整页上浮替换为 Web Animations API 时间线，逐一等待水母入镜、触手张力、海流托举和首屏分层进入。
+- 背景进入 `ambient` 后保留两个绘制帧和独立展示时间；导航、Hero 叙事与视觉舞台分别缓入，完成后才写入 `ready`。
+- 新建 `HeroVisualStage.tsx`，将大型静态占位改为人物、工作现场和个人作品三个可扩展模式。
+- 为视觉舞台加入语义 tab、前后按钮、方向键、触摸滑动、切换过渡和低幅度指针视差；持续指针值由 Motion value 管理。
+- 调整桌面取景比例，使 `1280 x 720` 首屏可以看见完整模式轨道和图注；移动端使用稳定横向取景且无溢出。
+- 补齐低动态、低透明度、浅色与深色主题覆盖，并保留所有真实素材占位边界。
+
+当前现象：
+
+- WebGPU 硬重载实测状态为 `loading 0.98 s -> ambient 2.66 s -> entering -> ready 4.41 s`，没有同帧闪现。
+- `1280 x 720` 深浅主题中舞台底部约为 `695 px`，切换轨道、箭头和图注均位于首屏；横向溢出为 0。
+- `390 x 844` 中舞台宽约 `327 px`，模式轨道宽约 `223 px`，按钮和图注完整，横向溢出为 0。
+- WebGPU、WebGL2 与 static 都完成同一进入状态机；最终 WebGPU 深色会话无 console warning 或 error。
+
+下一步最小动作：
+
+- 提交功能分支并以 `--no-ff` 合回 `develop`；不合入 `main`。
+
+阻塞与证据：
+
+- 当前浏览器接口不能模拟 `prefers-reduced-motion`，该路径通过短淡入分支、Motion hook、CSS 媒体覆盖和代码审计确认。
+- 姓名、人像、简历、邮箱、文章配图与真实文章链接仍为明确占位；`D:\project\blog` 未修改。
