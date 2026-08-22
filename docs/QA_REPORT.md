@@ -626,3 +626,38 @@ v0.7 满足海洋静物、双主题眼睛修正、固定时间步、WebGPU 优�
 - 浏览器各后端控制台无 warning 或 error。
 - `prefers-reduced-motion` 通过 static 选择逻辑、CSS 媒体覆盖和代码审计确认。
 - 未修改 `D:\project\blog`。
+
+## 2026-08-23 / v0.12 水母牵引与个人视觉舞台验收
+
+### 首次进入时间线
+
+- 硬重载记录为 `loading 37 ms`、`ambient 979 ms`、`entering 2656 ms`、`ready 4406 ms`。
+- 水母先从下方进入，触手张力动画完成后海流和正文才开始上升；导航、Hero 叙事与视觉舞台拥有独立时长和错峰。
+- `ready` 只在所有 Web Animations 完成后写入，临时内联样式随后清理，正文已移除 `inert`。
+- `4.8 s` 故障保护保留，背景初始化失败时启动缩短编舞并最终释放正文。
+
+### 视觉舞台交互
+
+- 人物、现场和作品三个 tab 会同步更新取景框、图标、标签和图注。
+- 上一张、下一张与左右方向键可以循环切换；移动布局保持语义按钮和触摸滑动分支。
+- 指针视差使用 Motion value 与弹簧，React state 只记录离散模式和切换方向。
+- 当前无真实素材时持续显示明确占位；组件已有 `src` 与 `alt` 分支供后续接入。
+
+### 浏览器矩阵
+
+| 场景 | 结果 |
+| --- | --- |
+| 1280 x 720 / WebGPU / 深色 | `webgpu / ready`，完整开场、舞台轨道和图注可见，0 横向溢出 |
+| 1280 x 720 / WebGPU / 浅色 | 标签与取景引导线对比清晰，舞台底部约 `695 px` |
+| 390 x 844 / WebGPU / 深色 | 舞台约 `327 px` 宽，三个模式与箭头完整，0 横向溢出 |
+| 1280 x 720 / WebGL2 | `webgl2 / ready`，舞台存在且进入状态机完成 |
+| 1280 x 720 / static | `static / ready`，静态背景完成同一编舞 |
+
+### 自动化与质量门禁
+
+- `bun test`：33 passed、0 failed。
+- `bun run check`：0 errors、0 warnings、0 hints。
+- `bun run build`：2 个静态路由构建成功。
+- 最终 WebGPU 深色浏览器会话无 console warning 或 error。
+- `prefers-reduced-motion` 通过短淡入逻辑、Motion hook、CSS 媒体覆盖和代码审计确认。
+- 未修改 `D:\project\blog`。
