@@ -526,3 +526,32 @@ v0.7 满足海洋静物、双主题眼睛修正、固定时间步、WebGPU 优�
 - `bun run build`：2 个静态路由构建成功。
 - `git diff --check`：通过。
 - 未修改 `D:\project\blog`。
+
+## 2026-08-23 / v0.9 海洋静物自然漂流验收
+
+### 机制替换
+
+- 运行时不再包含碎裂、销毁、权重阈值或边缘补充链路。
+- `data-entity-model="fixed-drift"` 与 `data-contact-model="gentle-displacement"` 生效。
+- 桌面固定 8 个静物，平衡质量和移动端固定 6 个；旧 `data-entity-weight`、`data-regeneration`、`data-fracture-count` 与 `data-destroyed-count` 均不存在。
+- 静物越过带余量的视口后从相对侧回流，不再被夹到边界坐标。
+- 海豚只做渐进排开，实体速度上限为 `0.30`，珊瑚角速度响应进一步缩减。
+
+### 浏览器矩阵
+
+| 场景 | 结果 |
+| --- | --- |
+| 1440 x 900 / WebGPU / 深色 | `webgpu / full / ready`，8 个实体，连续观察无边缘堆积 |
+| 1440 x 900 / WebGPU / 浅色 | 8 个实体，静物、海豚眼睛与正文层级正常 |
+| 390 x 844 / WebGPU / 浅色 | `webgpu / balanced / ready`，6 个实体，横向溢出为 0 |
+| 390 x 844 / WebGL2 | `webgl2 / balanced / ready`，6 个实体 |
+| 390 x 844 / static | `static / ready`，静态降级可见 |
+
+### 自动化与质量门禁
+
+- `bun test`：32 passed、0 failed。
+- `bun run check`：0 errors、0 warnings、0 hints。
+- `bun run build`：2 个静态路由构建成功。
+- `git diff --check`：通过。
+- 干净 WebGPU 标签运行约 2.5 秒后为 `ready`，逻辑 tick 持续推进，console 无 warning 或 error。
+- 未修改 `D:\project\blog`。

@@ -62,6 +62,14 @@
 - Astro 观察器与 React Motion 的职责已经分离，无 hydration mismatch
 - 深浅主题、390 x 844、WebGPU、WebGL2、static 和低动态代码路径已完成回归
 
+### v0.9 Natural Still-life Drift
+
+- 静物分裂、销毁与加权边缘补充机制已移除
+- 桌面 8 个、平衡质量与移动端 6 个的固定数量模型已完成
+- 平滑洋流、个体相位扰动、低速阻尼和离屏回流已完成
+- 海豚接触已改为渐进限速排开，不再破坏或击飞静物
+- WebGPU、WebGL2、static、深浅主题与移动端回归已完成
+
 ## 非目标
 
 - 不修改 `D:\project\blog`

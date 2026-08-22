@@ -4,9 +4,7 @@ import {
   AMBIENT_ENTITY_RESTITUTION,
   AMBIENT_JELLY_MAX_SPEED,
   advanceRibbonChain,
-  canFracture,
-  destructibleWeight,
-  fracturePattern,
+  gentlyDisplaceBody,
   limitMotionSpeed,
   limitSolidSpeed,
   pointerRepulsion,
@@ -16,7 +14,7 @@ import {
   sampleOceanFlow,
   scheduleFixedSimulation,
   schoolingSteer,
-  shouldRegenerateDestructibles,
+  wrapDriftingBody,
   type SolidBodyState,
 } from "../src/lib/ambientSimulation";
 
@@ -127,42 +125,38 @@ describe("ambient entity rules", () => {
     expect(jelly.vx / jelly.vy).toBeCloseTo(3 / 4, 8);
   });
 
-  test("complex shapes fracture into simpler bounded sets", () => {
-    const circle = fracturePattern("circle", 2);
-    const rectangle = fracturePattern("rect", 2);
-    const triangle = fracturePattern("triangle", 1);
-    expect(circle).toHaveLength(3);
-    expect(circle.every((piece) => piece.kind === "triangle" && piece.level === 1)).toBe(true);
-    expect(rectangle.map((piece) => piece.kind)).toEqual(["rect", "rect", "triangle", "triangle"]);
-    expect(triangle).toHaveLength(2);
-    expect(triangle.every((piece) => piece.level === 0)).toBe(true);
+  test("drifting bodies wrap through the offscreen margin without sticking to an edge", () => {
+    const body = { x: -6.42, y: 3.31 };
+    expect(wrapDriftingBody(body, 5, 2.5, 0.4)).toBe(true);
+    expect(body.x).toBeCloseTo(4.38, 8);
+    expect(body.y).toBeCloseTo(-2.49, 8);
+
+    const inside = { x: 5.39, y: -2.89 };
+    expect(wrapDriftingBody(inside, 5, 2.5, 0.4)).toBe(false);
+    expect(inside).toEqual({ x: 5.39, y: -2.89 });
   });
 
-  test("fracturing respects impact and the hard entity limit", () => {
-    expect(canFracture(2, 1.1, 6, 14)).toBe(true);
-    expect(canFracture(0, 1.1, 6, 14)).toBe(true);
-    expect(canFracture(2, 0.4, 6, 14)).toBe(false);
-    expect(canFracture(2, 1.1, 14, 14)).toBe(true);
-    expect(canFracture(2, 1.1, 15, 14)).toBe(false);
-    expect(canFracture(-1, 1.1, 6, 14)).toBe(false);
-  });
+  test("dolphin contact gently separates a relic and keeps its speed capped", () => {
+    const relic: SolidBodyState = {
+      x: 0.22,
+      y: 0,
+      vx: 0.02,
+      vy: 0,
+      radius: 0.32,
+      mass: 1,
+      angularVelocity: 0,
+    };
+    const contacted = gentlyDisplaceBody(relic, { x: 0, y: 0 }, 0.7, { x: 1.1, y: 0 });
 
-  test("fracture weight falls as an object becomes smaller and simpler", () => {
-    const parent = destructibleWeight(2, 0.5);
-    const firstGeneration = fracturePattern("circle", 2).reduce(
-      (total, piece) => total + destructibleWeight(piece.level, 0.5 * piece.radiusRatio),
-      0,
-    );
-    expect(firstGeneration).toBeLessThan(parent);
-    expect(destructibleWeight(0, 0.2)).toBeLessThan(destructibleWeight(1, 0.2));
-    expect(destructibleWeight(2, -1)).toBe(0);
-  });
+    expect(contacted).toBe(true);
+    expect(relic.x).toBeGreaterThan(0.22);
+    expect(relic.vx).toBeGreaterThan(0);
+    expect(Math.hypot(relic.vx, relic.vy)).toBeLessThanOrEqual(AMBIENT_ENTITY_MAX_SPEED);
 
-  test("weighted regeneration uses hysteresis between lower and upper thresholds", () => {
-    expect(shouldRegenerateDestructibles(0.39, 0.4, 0.9, false)).toBe(true);
-    expect(shouldRegenerateDestructibles(0.65, 0.4, 0.9, true)).toBe(true);
-    expect(shouldRegenerateDestructibles(0.65, 0.4, 0.9, false)).toBe(false);
-    expect(shouldRegenerateDestructibles(0.9, 0.4, 0.9, true)).toBe(false);
+    for (let index = 0; index < 120; index += 1) {
+      gentlyDisplaceBody(relic, { x: relic.x - 0.05, y: relic.y }, 0.7, { x: 2, y: 0 });
+    }
+    expect(Math.hypot(relic.vx, relic.vy)).toBeLessThanOrEqual(AMBIENT_ENTITY_MAX_SPEED);
   });
 
   test("ocean flow is smooth and bounded", () => {
