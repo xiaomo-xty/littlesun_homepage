@@ -433,3 +433,28 @@
 ### 结论
 
 v0.7 满足海洋静物、双主题眼睛修正、固定时间步、WebGPU 优先和完整降级要求，可合并至 `develop`。
+
+## 2026-08-22 / v0.7.1 接触质感与海花轮廓验收
+
+### 视觉与尺寸
+
+- 圆形实体已替换为原创五瓣有机海花，`data-relic-set="sea-bloom-sea-glass-coral"`。
+- 桌面 WebGPU 初始最大半径不超过 `0.52`；移动 390 x 844 实测最大半径为 `0.415`。
+- static 模式海花节点为 1，旧 `.ambient-static-shell` 节点为 0。
+- 深浅主题和移动端均无水平溢出，正文、按钮与人像占位未被背景遮挡。
+
+### 接触响应
+
+- 接触模型为 `data-contact-model="soft-capped"`，速度上限为 `0.72`。
+- 浏览器连续快速指针移动和点击测试中，最高观测速度为 `0.484`。
+- 停止输入约一秒后速度衰减到 `0.078`，没有持续滑飞。
+- 纯函数测试确认低恢复碰撞交换动量后速度为输入速度的 `0.28`，速度封顶保持原方向。
+
+### 质量门禁
+
+- `bun test`：31 passed、0 failed。
+- `bun run check`：0 errors、0 warnings、0 hints。
+- `bun run build`：2 个静态路由构建成功。
+- `git diff --check`：通过。
+- 浏览器控制台：无 warning 或 error。
+- 未修改 `D:\project\blog`。

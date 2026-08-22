@@ -165,20 +165,19 @@
   opacity: 0.4;
 }
 
-.ambient-static-shell {
+.ambient-static-sea-bloom {
+  position: absolute;
   top: 14%;
-  right: 9%;
-  width: min(13vw, 180px);
-  aspect-ratio: 1.08;
-  border-radius: 52% 48% 44% 46% / 62% 60% 34% 36%;
-  background:
-    repeating-conic-gradient(
-      from 206deg at 50% 86%,
-      transparent 0 11deg,
-      color-mix(in srgb, var(--accent-strong) 44%, transparent) 11deg 12deg
-    ),
-    color-mix(in srgb, var(--surface-strong) 44%, transparent);
-  transform: rotate(8deg);
+  right: 42%;
+  width: min(11vw, 150px);
+  overflow: visible;
+  fill: none;
+  opacity: 0.3;
+  stroke: color-mix(in srgb, var(--accent-strong) 72%, var(--line-strong));
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 0.032;
+  transform: rotate(7deg);
 }
 
 .ambient-static-sea-glass {
@@ -275,14 +274,9 @@
   opacity: 0.3;
 }
 
-:root[data-theme="dark"] .ambient-static-shell {
-  background:
-    repeating-conic-gradient(
-      from 206deg at 50% 86%,
-      transparent 0 11deg,
-      color-mix(in srgb, var(--accent) 38%, transparent) 11deg 12deg
-    ),
-    color-mix(in srgb, var(--surface-strong) 24%, transparent);
+:root[data-theme="dark"] .ambient-static-sea-bloom {
+  opacity: 0.26;
+  stroke: color-mix(in srgb, var(--accent) 76%, var(--surface-strong));
 }
 
 :root[data-theme="dark"] .ambient-static-dolphin-eye {
@@ -1719,9 +1713,9 @@ h3 {
     opacity: 0.2;
   }
 
-  .ambient-static-shell {
+  .ambient-static-sea-bloom {
     right: -8%;
-    width: 34vw;
+    width: 30vw;
   }
 
   .ambient-static-sea-glass {
