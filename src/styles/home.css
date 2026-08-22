@@ -157,7 +157,7 @@
   content: "";
 }
 
-.ambient-static-shape {
+.ambient-static-relic {
   position: absolute;
   display: block;
   border: 1px solid var(--line-strong);
@@ -165,31 +165,43 @@
   opacity: 0.4;
 }
 
-.ambient-static-shape-one {
-  top: 12%;
-  right: 7%;
-  width: min(28vw, 420px);
-  aspect-ratio: 1.25;
-  border-radius: 52% 48% 58% 42% / 44% 56% 42% 58%;
-  transform: rotate(7deg);
+.ambient-static-shell {
+  top: 14%;
+  right: 9%;
+  width: min(13vw, 180px);
+  aspect-ratio: 1.08;
+  border-radius: 52% 48% 44% 46% / 62% 60% 34% 36%;
+  background:
+    repeating-conic-gradient(
+      from 206deg at 50% 86%,
+      transparent 0 11deg,
+      color-mix(in srgb, var(--accent-strong) 44%, transparent) 11deg 12deg
+    ),
+    color-mix(in srgb, var(--surface-strong) 44%, transparent);
+  transform: rotate(8deg);
 }
 
-.ambient-static-shape-two {
-  top: 48%;
-  left: 4%;
-  width: min(19vw, 290px);
-  aspect-ratio: 0.82;
-  border-radius: 46% 54% 42% 58% / 58% 44% 56% 42%;
-  transform: rotate(-9deg);
+.ambient-static-sea-glass {
+  top: 51%;
+  left: 6%;
+  width: min(11vw, 148px);
+  aspect-ratio: 1.32;
+  border-radius: 42% 58% 49% 51% / 54% 42% 58% 46%;
+  background:
+    linear-gradient(150deg, color-mix(in srgb, var(--accent) 20%, transparent), transparent 58%),
+    color-mix(in srgb, var(--surface-strong) 36%, transparent);
+  transform: rotate(-12deg);
 }
 
-.ambient-static-shape-three {
-  right: 18%;
-  bottom: 6%;
-  width: min(22vw, 330px);
-  aspect-ratio: 1.6;
-  border-radius: 999px;
-  transform: rotate(-4deg);
+.ambient-static-coral {
+  right: 19%;
+  bottom: 8%;
+  width: min(9vw, 126px);
+  aspect-ratio: 0.9;
+  border: 0;
+  background: color-mix(in srgb, var(--accent-strong) 34%, transparent);
+  clip-path: polygon(42% 100%, 38% 64%, 12% 45%, 2% 27%, 18% 20%, 37% 42%, 45% 0, 60% 2%, 57% 40%, 78% 25%, 92% 38%, 66% 59%, 62% 100%);
+  transform: rotate(8deg);
 }
 
 .ambient-static-dolphin {
@@ -225,7 +237,7 @@
 }
 
 .ambient-static-dolphin-eye {
-  fill: var(--ink);
+  fill: #071722;
 }
 
 .ambient-static-pixel {
@@ -258,9 +270,23 @@
   opacity: 0.5;
 }
 
-:root[data-theme="dark"] .ambient-static-shape {
+:root[data-theme="dark"] .ambient-static-relic {
   background: color-mix(in srgb, var(--surface-strong) 26%, transparent);
   opacity: 0.3;
+}
+
+:root[data-theme="dark"] .ambient-static-shell {
+  background:
+    repeating-conic-gradient(
+      from 206deg at 50% 86%,
+      transparent 0 11deg,
+      color-mix(in srgb, var(--accent) 38%, transparent) 11deg 12deg
+    ),
+    color-mix(in srgb, var(--surface-strong) 24%, transparent);
+}
+
+:root[data-theme="dark"] .ambient-static-dolphin-eye {
+  fill: #050f16;
 }
 
 :root[data-theme="dark"] .ambient-static-dolphin {
@@ -1693,19 +1719,19 @@ h3 {
     opacity: 0.2;
   }
 
-  .ambient-static-shape-one {
-    right: -22%;
-    width: 72vw;
+  .ambient-static-shell {
+    right: -8%;
+    width: 34vw;
   }
 
-  .ambient-static-shape-two {
-    left: -24%;
-    width: 58vw;
+  .ambient-static-sea-glass {
+    left: -8%;
+    width: 28vw;
   }
 
-  .ambient-static-shape-three {
-    right: -16%;
-    width: 62vw;
+  .ambient-static-coral {
+    right: -5%;
+    width: 24vw;
   }
 
   .ambient-static-dolphin {

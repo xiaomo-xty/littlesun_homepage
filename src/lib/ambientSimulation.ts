@@ -52,6 +52,46 @@ export type JellyPulseSample = {
   thrust: number;
 };
 
+export type FixedStepSchedule = {
+  count: number;
+  delta: number;
+  accumulator: number;
+  alpha: number;
+  simulatedDelta: number;
+  droppedDelta: number;
+};
+
+export const AMBIENT_FIXED_STEP = 1 / 60;
+export const AMBIENT_MAX_FIXED_STEPS = 8;
+
+export function scheduleFixedSimulation(
+  accumulator: number,
+  frameDelta: number,
+  fixedStep = AMBIENT_FIXED_STEP,
+  maximumSteps = AMBIENT_MAX_FIXED_STEPS,
+): FixedStepSchedule {
+  const safeStep = Math.max(0.0001, fixedStep);
+  const safeMaximumSteps = Math.max(1, Math.floor(maximumSteps));
+  const safeAccumulator = Math.max(0, Math.min(safeStep * (1 - 1e-9), accumulator));
+  const safeFrameDelta = Math.max(0, frameDelta);
+  const acceptedDelta = Math.min(safeFrameDelta, safeStep * safeMaximumSteps);
+  const available = safeAccumulator + acceptedDelta;
+  const count = Math.min(
+    safeMaximumSteps,
+    Math.floor((available + safeStep * 1e-9) / safeStep),
+  );
+  const nextAccumulator = Math.max(0, available - count * safeStep);
+
+  return {
+    count,
+    delta: safeStep,
+    accumulator: nextAccumulator,
+    alpha: Math.max(0, Math.min(1, nextAccumulator / safeStep)),
+    simulatedDelta: count * safeStep,
+    droppedDelta: safeFrameDelta - acceptedDelta,
+  };
+}
+
 function smoothstep(value: number) {
   const clamped = Math.max(0, Math.min(1, value));
   return clamped * clamped * (3 - 2 * clamped);
