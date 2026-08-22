@@ -458,3 +458,37 @@ v0.7 满足海洋静物、双主题眼睛修正、固定时间步、WebGPU 优�
 - `git diff --check`：通过。
 - 浏览器控制台：无 warning 或 error。
 - 未修改 `D:\project\blog`。
+
+## 2026-08-22 / v0.7.2 温和生态与加权预算验收
+
+### 物理表现
+
+- WebGPU 桌面连续观察中，`data-coral-angle-deviation` 保持在 `0-0.011`，珊瑚受扰后回到生成姿态。
+- `data-jelly-speed-max` 日常观测为 `0.02-0.09`，纯函数测试确认任何输入都会限制在 `0.24` 以内。
+- 最末级碎片可以进入碎裂队列并彻底移除，运行会话中 `data-destroyed-count` 从 `0` 增加到 `12`。
+- 实体移除会释放其专属 Shape、边线、细节几何和材质，并从活动数组删除。
+
+### 加权补充
+
+- 初始桌面权重为 `1.669`，下阈值为 `0.768`，上阈值为 `1.702`。
+- 观察到权重依次下降至 `1.035`、`0.916`、`0.821`，随后越过下阈值并进入随机补充。
+- 补充后权重回升，`data-regeneration` 回到 `idle`；上下阈值之间的滞回由纯函数测试覆盖。
+- 生成位置位于视口边缘，新实体使用低初速度和 `0.9 s` 淡入，未出现正文后方突然跳出的大物体。
+
+### 后端与响应式
+
+| 场景 | 结果 |
+| --- | --- |
+| 桌面 WebGPU 深色与浅色 | `full / ready`，珊瑚和水母诊断正常 |
+| 移动 390 x 844 WebGPU | `balanced / ready`，横向溢出为 0 |
+| 桌面 WebGL2 | `balanced / ready`，6 个初始静物 |
+| 桌面 static | `static / ready`，画布透明且静态珊瑚保留 |
+
+### 质量门禁
+
+- `bun test`：34 passed、0 failed。
+- `bun run check`：0 errors、0 warnings、0 hints。
+- `bun run build`：2 个静态路由构建成功。
+- `git diff --check`：通过。
+- 全新 1280 x 720 WebGPU 标签为 `full / ready`，横向溢出为 0，控制台无 warning 或 error。
+- 未修改 `D:\project\blog`。

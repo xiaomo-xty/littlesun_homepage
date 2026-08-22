@@ -65,6 +65,7 @@ export const AMBIENT_FIXED_STEP = 1 / 60;
 export const AMBIENT_MAX_FIXED_STEPS = 8;
 export const AMBIENT_ENTITY_RESTITUTION = 0.28;
 export const AMBIENT_ENTITY_MAX_SPEED = 0.72;
+export const AMBIENT_JELLY_MAX_SPEED = 0.24;
 
 export function scheduleFixedSimulation(
   accumulator: number,
@@ -94,7 +95,7 @@ export function scheduleFixedSimulation(
   };
 }
 
-export function limitSolidSpeed<T extends SolidBodyState>(body: T, maximumSpeed = AMBIENT_ENTITY_MAX_SPEED): T {
+export function limitMotionSpeed<T extends { vx: number; vy: number }>(body: T, maximumSpeed: number): T {
   const safeMaximum = Math.max(0, maximumSpeed);
   const speed = Math.hypot(body.vx, body.vy);
   if (speed > safeMaximum && speed > 0.0001) {
@@ -103,6 +104,28 @@ export function limitSolidSpeed<T extends SolidBodyState>(body: T, maximumSpeed 
     body.vy *= scale;
   }
   return body;
+}
+
+export function limitSolidSpeed<T extends SolidBodyState>(body: T, maximumSpeed = AMBIENT_ENTITY_MAX_SPEED): T {
+  return limitMotionSpeed(body, maximumSpeed);
+}
+
+export function destructibleWeight(level: number, radius: number) {
+  const safeLevel = Math.max(0, level);
+  const safeRadius = Math.max(0, radius);
+  return safeRadius * safeRadius * (1 + safeLevel * 0.35);
+}
+
+export function shouldRegenerateDestructibles(
+  currentWeight: number,
+  lowerThreshold: number,
+  upperThreshold: number,
+  currentlyActive: boolean,
+) {
+  const lower = Math.max(0, Math.min(lowerThreshold, upperThreshold));
+  const upper = Math.max(lower, lowerThreshold, upperThreshold);
+  const current = Math.max(0, currentWeight);
+  return currentlyActive ? current < upper : current < lower;
 }
 
 function smoothstep(value: number) {
@@ -247,7 +270,7 @@ export function fracturePattern(kind: SolidKind, level: number): FracturePiece[]
 }
 
 export function canFracture(level: number, impact: number, entityCount: number, entityLimit: number) {
-  return level > 0 && impact >= 0.82 && entityCount < entityLimit;
+  return level >= 0 && impact >= 0.82 && entityCount <= entityLimit;
 }
 
 export function sampleOceanFlow(
