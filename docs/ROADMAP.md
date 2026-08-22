@@ -70,6 +70,15 @@
 - 海豚接触已改为渐进限速排开，不再破坏或击飞静物
 - WebGPU、WebGL2、static、深浅主题与移动端回归已完成
 
+### v0.10 Biological Motion and Selective Glow
+
+- 动态后端下的 static fallback 已完全淡出，固定鱼影已消除
+- 水母已形成收缩、推进、滑行、舒张和触手延迟跟随的完整游动循环
+- 水母推进同步发光采样与纯函数测试已完成
+- 近景像素、海花、海玻璃、水母和海豚的选择性 additive halo 已完成
+- 深色生物发光与浅色弱高光分级已完成
+- WebGPU、WebGL2、static、深浅主题与 390 x 844 移动端回归已完成
+
 ## 非目标
 
 - 不修改 `D:\project\blog`

@@ -198,6 +198,15 @@ export function sampleJellyPulse(phase: number): JellyPulseSample {
   return { contraction, thrust };
 }
 
+export function sampleJellyLuminescence(phase: number) {
+  const wrapped = ((phase % 1) + 1) % 1;
+  const pulse = sampleJellyPulse(wrapped);
+  const riseProgress = Math.max(0, Math.min(1, (wrapped - 0.035) / 0.09));
+  const smoothRise = riseProgress * riseProgress * (3 - 2 * riseProgress);
+  const afterglow = smoothRise * Math.exp(-Math.max(0, wrapped - 0.14) * 5.2);
+  return Math.max(0, Math.min(1, 0.18 + pulse.thrust * 0.58 + pulse.contraction * 0.12 + afterglow * 0.12));
+}
+
 export function pointerRepulsion(
   position: Vector2Like,
   pointer: Vector2Like,
