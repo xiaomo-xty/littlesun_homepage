@@ -387,3 +387,49 @@
 - `bun run build`：2 个静态路由构建成功。
 - `git diff --check`：通过。
 - 未修改 `D:\project\blog`。
+
+## 2026-08-22 / v0.7 海洋静物与固定时间步验收
+
+### 环境与范围
+
+- 分支：`feature/v0.7-marine-still-life-fixed-step`
+- 正式主页：`http://127.0.0.1:4335/`
+- 桌面：1280 x 720；移动：390 x 844
+- 后端：WebGPU、强制 WebGL2、强制 static
+
+### 背景后端与主题
+
+| 场景 | 运行状态 | 结果 |
+| --- | --- | --- |
+| 桌面 / WebGPU / 深色 | `webgpu / full / ready` | 通过：深墨色眼睛，海洋静物可见 |
+| 桌面 / WebGPU / 浅色 | `webgpu / full / ready` | 通过：静物边缘与细节保持可辨 |
+| 桌面 / `?ambient=webgl2` | `webgl2 / balanced / ready` | 通过：6 个静物、2 只水母 |
+| 桌面 / `?ambient=static` | `static / static / ready` | 通过：CSS 贝壳、海玻璃、珊瑚与海豚 |
+| 移动 / WebGPU | `webgpu / balanced / ready` | 通过：无横向溢出 |
+
+诊断属性：
+
+- `data-entity-visual="marine-still-life"`
+- `data-simulation-step="60hz"`
+- 深浅主题分别为 `data-dolphin-eye="deep-ink-dark"` 和 `deep-ink-light`
+- WebGPU 项目切牌后保持 `ready`，实体碎裂计数继续更新
+
+### 固定时间步
+
+- 30、60、120 FPS 各模拟 12 秒，均产生 720 个逻辑 tick。
+- 2 秒长帧最多追赶 8 个 tick，并丢弃剩余过量时间。
+- 海豚脊柱、静物、水母与像素使用前后状态插值，显示帧率只影响采样密度，不改变逻辑推进速度。
+- 页面隐藏后暂停；恢复时清空 accumulator，不追赶不可见期间的时间。
+
+### 质量门禁
+
+- `bun test`：30 passed、0 failed。
+- `bun run check`：0 errors、0 warnings、0 hints。
+- `bun run build`：2 个静态路由构建成功。
+- `git diff --check`：通过。
+- 浏览器控制台：无 warning 或 error。
+- 未修改 `D:\project\blog`。
+
+### 结论
+
+v0.7 满足海洋静物、双主题眼睛修正、固定时间步、WebGPU 优先和完整降级要求，可合并至 `develop`。

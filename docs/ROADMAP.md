@@ -44,6 +44,13 @@
 - 同侧海豚、水母和像素生态已集成主页 `AmbientWorld`
 - WebGPU、WebGL2、static、深浅主题与移动端验收完成
 
+### v0.7 Marine Still Life and Fixed Simulation
+
+- 抽象几何实体已替换为贝壳、海玻璃和珊瑚碎枝
+- 暗色主题海豚眼睛已改为深墨色并与身体同步淡化
+- 背景逻辑已改为 60 Hz 固定时间步，显示帧只负责插值渲染
+- WebGPU、WebGL2、static、深浅主题与移动端回归完成
+
 ## 非目标
 
 - 不修改 `D:\project\blog`

@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import * as THREE from "three/webgpu";
 import {
+  AMBIENT_FIXED_STEP,
   advanceRibbonChain,
   canFracture,
   fracturePattern,
@@ -9,6 +10,7 @@ import {
   sampleAmbientDepth,
   sampleJellyPulse,
   sampleOceanFlow,
+  scheduleFixedSimulation,
   type CollisionResult,
   type RibbonPoint,
   type SolidBodyState,
@@ -20,7 +22,6 @@ import {
   advanceDolphinPathStream,
   advanceDolphinSpine,
   advanceRepulsionOffset,
-  calculateSimulationSubsteps,
   createDolphinPathStream,
   createDolphinSpine,
   sampleDolphinBezierPath,
@@ -53,20 +54,30 @@ type SceneProfile = {
 type OceanEntity = SolidBodyState & {
   id: number;
   kind: SolidKind;
+  relic: MarineRelicKind;
   level: number;
   group: THREE.Group;
   fill: THREE.MeshBasicMaterial;
   edge: THREE.LineBasicMaterial;
+  detail: THREE.LineBasicMaterial;
   alive: boolean;
   hit: number;
   fractureCooldown: number;
   phase: number;
   depth: number;
+  previousX: number;
+  previousY: number;
+  rotation: number;
+  previousRotation: number;
 };
+
+type MarineRelicKind = "shell" | "sea-glass" | "coral";
 
 type OceanParticle = {
   x: number;
   y: number;
+  previousX: number;
+  previousY: number;
   z: number;
   vx: number;
   vy: number;
@@ -96,6 +107,8 @@ type JellyTentacle = {
 };
 
 type AmbientJelly = Vector2Like & {
+  previousX: number;
+  previousY: number;
   vx: number;
   vy: number;
   phase: number;
@@ -104,6 +117,7 @@ type AmbientJelly = Vector2Like & {
   cycleDuration: number;
   pulseStrength: number;
   heading: number;
+  previousHeading: number;
   group: THREE.Group;
   fill: THREE.MeshBasicMaterial;
   edge: THREE.LineBasicMaterial;
@@ -153,6 +167,16 @@ function lerp(current: number, target: number, amount: number) {
   return current + (target - current) * amount;
 }
 
+function lerpAngle(current: number, target: number, amount: number) {
+  return current + Math.atan2(Math.sin(target - current), Math.cos(target - current)) * amount;
+}
+
+const marineRelicForSolid: Record<SolidKind, MarineRelicKind> = {
+  circle: "shell",
+  rect: "sea-glass",
+  triangle: "coral",
+};
+
 export default function AmbientWorld() {
   const hostRef = useRef<HTMLDivElement>(null);
 
@@ -173,6 +197,8 @@ export default function AmbientWorld() {
     host.dataset.quality = "static";
     host.dataset.creature = "same-side-dolphin";
     host.dataset.pointerForce = "repel";
+    host.dataset.entityVisual = "marine-still-life";
+    host.dataset.simulationStep = "60hz";
     host.dataset.entityCount = "0";
     host.dataset.organismCount = "0";
     host.dataset.fractureCount = "0";
@@ -245,6 +271,8 @@ export default function AmbientWorld() {
       let pulse = 0;
       let fractureCount = 0;
       let hasRendered = false;
+      let simulationAccumulator = 0;
+      let simulationTick = 0;
       let nextEntityId = 1;
       let lightTheme = true;
       const pulseOrigin = new THREE.Vector2();
@@ -299,6 +327,8 @@ export default function AmbientWorld() {
           return {
             x: random() * 12 - 6,
             y: random() * 10 - 5,
+            previousX: 0,
+            previousY: 0,
             z: -5.4 + depth * 5.8,
             vx: 0,
             vy: 0,
@@ -311,6 +341,10 @@ export default function AmbientWorld() {
             phase: random() * Math.PI * 2,
             speed: 0.035 + random() * 0.12,
           };
+        }).map((particle) => {
+          particle.previousX = particle.x;
+          particle.previousY = particle.y;
+          return particle;
         });
         return { mesh, material, particles: layerParticles, depthRange: spec.depthRange };
       });
@@ -414,9 +448,12 @@ export default function AmbientWorld() {
           return { points, positions, attribute, material, offset };
         });
 
+        const heading = Math.PI * (0.34 + random() * 0.32);
         jellies.push({
           x,
           y,
+          previousX: x,
+          previousY: y,
           vx: 0.04 + random() * 0.07,
           vy: 0.02 + random() * 0.04,
           depth,
@@ -424,7 +461,8 @@ export default function AmbientWorld() {
           scale,
           cycleDuration: 2.9 + random() * 1.05,
           pulseStrength: 0.28 + random() * 0.14,
-          heading: Math.PI * (0.34 + random() * 0.32),
+          heading,
+          previousHeading: heading,
           group,
           fill,
           edge,
@@ -444,27 +482,60 @@ export default function AmbientWorld() {
       const entityLimit = balanced ? 9 : 13;
       const collisionResult: CollisionResult = { collided: false, impact: 0, nx: 0, ny: 0 };
 
-      const createEntityGeometry = (kind: SolidKind, radius: number) => {
+      const createEntityShape = (kind: SolidKind, radius: number) => {
         const shape = new THREE.Shape();
         if (kind === "circle") {
-          shape.absellipse(0, 0, radius, radius * 0.68, 0, Math.PI * 2, false, 0);
+          shape.moveTo(0, -radius * 0.62);
+          shape.bezierCurveTo(-radius * 0.46, -radius * 0.56, -radius * 0.9, -radius * 0.24, -radius * 0.92, radius * 0.12);
+          shape.bezierCurveTo(-radius * 0.9, radius * 0.54, -radius * 0.5, radius * 0.82, 0, radius * 0.84);
+          shape.bezierCurveTo(radius * 0.5, radius * 0.82, radius * 0.9, radius * 0.54, radius * 0.92, radius * 0.12);
+          shape.bezierCurveTo(radius * 0.9, -radius * 0.24, radius * 0.46, -radius * 0.56, 0, -radius * 0.62);
         } else if (kind === "rect") {
-          const halfW = radius * 0.98;
-          const halfH = radius * 0.48;
-          const curve = radius * 0.34;
-          shape.moveTo(-halfW + curve, -halfH);
-          shape.lineTo(halfW - curve, -halfH);
-          shape.quadraticCurveTo(halfW, -halfH, halfW, 0);
-          shape.quadraticCurveTo(halfW, halfH, halfW - curve, halfH);
-          shape.lineTo(-halfW + curve, halfH);
-          shape.quadraticCurveTo(-halfW, halfH, -halfW, 0);
-          shape.quadraticCurveTo(-halfW, -halfH, -halfW + curve, -halfH);
+          shape.moveTo(-radius * 0.78, -radius * 0.22);
+          shape.bezierCurveTo(-radius * 0.72, -radius * 0.58, -radius * 0.28, -radius * 0.66, radius * 0.18, -radius * 0.56);
+          shape.bezierCurveTo(radius * 0.66, -radius * 0.5, radius * 0.88, -radius * 0.2, radius * 0.78, radius * 0.2);
+          shape.bezierCurveTo(radius * 0.66, radius * 0.56, radius * 0.18, radius * 0.64, -radius * 0.28, radius * 0.56);
+          shape.bezierCurveTo(-radius * 0.72, radius * 0.48, -radius * 0.9, radius * 0.14, -radius * 0.78, -radius * 0.22);
         } else {
-          shape.moveTo(radius, 0);
-          shape.quadraticCurveTo(0.12 * radius, 0.9 * radius, -0.72 * radius, 0.12 * radius);
-          shape.quadraticCurveTo(-0.2 * radius, -0.72 * radius, radius, 0);
+          shape.moveTo(-radius * 0.2, -radius * 0.78);
+          shape.lineTo(radius * 0.16, -radius * 0.76);
+          shape.lineTo(radius * 0.15, -radius * 0.24);
+          shape.lineTo(radius * 0.48, -radius * 0.02);
+          shape.lineTo(radius * 0.66, -radius * 0.25);
+          shape.lineTo(radius * 0.82, -radius * 0.08);
+          shape.lineTo(radius * 0.52, radius * 0.26);
+          shape.lineTo(radius * 0.2, radius * 0.06);
+          shape.lineTo(radius * 0.08, radius * 0.74);
+          shape.lineTo(-radius * 0.16, radius * 0.7);
+          shape.lineTo(-radius * 0.2, radius * 0.2);
+          shape.lineTo(-radius * 0.52, radius * 0.5);
+          shape.lineTo(-radius * 0.72, radius * 0.3);
+          shape.lineTo(-radius * 0.42, 0);
+          shape.lineTo(-radius * 0.18, radius * 0.1);
         }
-        return register(new THREE.ShapeGeometry(shape, balanced ? 8 : 12));
+        return shape;
+      };
+
+      const createEntityDetailGeometry = (kind: SolidKind, radius: number) => {
+        const points: THREE.Vector3[] = [];
+        const segment = (x1: number, y1: number, x2: number, y2: number) => {
+          points.push(
+            new THREE.Vector3(x1 * radius, y1 * radius, -0.012),
+            new THREE.Vector3(x2 * radius, y2 * radius, -0.012),
+          );
+        };
+        if (kind === "circle") {
+          [-0.62, -0.32, 0, 0.32, 0.62].forEach((x) => segment(0, -0.5, x, 0.58 - Math.abs(x) * 0.12));
+          segment(-0.48, -0.18, 0.48, -0.18);
+        } else if (kind === "rect") {
+          segment(-0.45, 0.26, 0.38, 0.38);
+          segment(-0.5, 0.12, 0.56, 0.25);
+        } else {
+          segment(-0.02, -0.62, -0.02, 0.58);
+          segment(-0.02, -0.1, 0.52, 0.02);
+          segment(-0.04, 0.12, -0.48, 0.35);
+        }
+        return register(new THREE.BufferGeometry().setFromPoints(points));
       };
 
       const createEntity = (
@@ -476,23 +547,27 @@ export default function AmbientWorld() {
         vx: number,
         vy: number,
       ) => {
-        const geometry = createEntityGeometry(kind, radius);
+        const geometry = register(new THREE.ShapeGeometry(createEntityShape(kind, radius), balanced ? 8 : 12));
         const fill = register(new THREE.MeshBasicMaterial({ transparent: true, side: THREE.DoubleSide, depthWrite: false }));
         const mesh = new THREE.Mesh(geometry, fill);
         const edgeGeometry = register(new THREE.EdgesGeometry(geometry, 36));
         const edge = register(new THREE.LineBasicMaterial({ transparent: true, depthWrite: false }));
         const edges = new THREE.LineSegments(edgeGeometry, edge);
+        const detail = register(new THREE.LineBasicMaterial({ transparent: true, depthWrite: false }));
+        const details = new THREE.LineSegments(createEntityDetailGeometry(kind, radius), detail);
         const group = new THREE.Group();
-        group.add(mesh, edges);
+        group.add(mesh, edges, details);
         world.add(group);
 
         const entity: OceanEntity = {
           id: nextEntityId,
           kind,
+          relic: marineRelicForSolid[kind],
           level,
           group,
           fill,
           edge,
+          detail,
           alive: true,
           hit: 0,
           fractureCooldown: 1.8 + random() * 2.2,
@@ -500,12 +575,17 @@ export default function AmbientWorld() {
           depth: -0.72 - random() * 1.32,
           x,
           y,
+          previousX: x,
+          previousY: y,
           vx,
           vy,
           radius,
           mass: Math.max(0.22, radius * radius * (kind === "rect" ? 1.3 : 1)),
           angularVelocity: (random() - 0.5) * 0.18,
+          rotation: (random() - 0.5) * 0.34,
+          previousRotation: 0,
         };
+        entity.previousRotation = entity.rotation;
         nextEntityId += 1;
         entities.push(entity);
         return entity;
@@ -624,15 +704,17 @@ export default function AmbientWorld() {
       let dolphinSwimClock = 0;
       let simulationClock = 0;
       let dolphinSpine: DolphinSpinePoint[] = createDolphinSpine({ x: 0, y: 0 }, 0, dolphinScale);
+      let previousDolphinSpine = dolphinSpine.map((point) => ({ ...point }));
+      let renderDolphinSpine = dolphinSpine.map((point) => ({ ...point }));
       const dolphinHead = new THREE.Vector2();
       const dolphinForward = new THREE.Vector2(1, 0);
       const dolphinRepulsion: RepulsionState = { x: 0, y: 0, vx: 0, vy: 0 };
       let dolphinEntityCooldown = 0;
       let dolphinTextVisibility = 1;
 
-      const updateDolphinGeometry = () => {
-        const headFrame = sampleSpineFrame(dolphinSpine, 0);
-        const tailFrame = sampleSpineFrame(dolphinSpine, 1);
+      const updateDolphinGeometry = (spine: readonly DolphinSpinePoint[]) => {
+        const headFrame = sampleSpineFrame(spine, 0);
+        const tailFrame = sampleSpineFrame(spine, 1);
         dolphinParts.forEach((part) => {
           for (let index = 0; index < part.basePositions.length; index += 3) {
             const baseX = part.basePositions[index];
@@ -647,7 +729,7 @@ export default function AmbientWorld() {
               frameSample = tailFrame;
               along = -(longitudinal - DOLPHIN_BODY_LENGTH) * dolphinScale;
             } else {
-              frameSample = sampleSpineFrame(dolphinSpine, longitudinal / DOLPHIN_BODY_LENGTH);
+              frameSample = sampleSpineFrame(spine, longitudinal / DOLPHIN_BODY_LENGTH);
             }
             part.attribute.setXYZ(
               index / 3,
@@ -682,8 +764,10 @@ export default function AmbientWorld() {
         const routeSample = sampleDolphinBezierPath(dolphinStream.path, 0);
         dolphinHead.set(routeSample.position.x, routeSample.position.y + currentProfile.dolphinBiasY);
         dolphinSpine = createDolphinSpine(dolphinHead, routeSample.heading, dolphinScale);
+        previousDolphinSpine = dolphinSpine.map((point) => ({ ...point }));
+        renderDolphinSpine = dolphinSpine.map((point) => ({ ...point }));
         dolphinForward.set(Math.cos(routeSample.heading), Math.sin(routeSample.heading));
-        updateDolphinGeometry();
+        updateDolphinGeometry(dolphinSpine);
       };
 
       const applyTheme = () => {
@@ -697,7 +781,8 @@ export default function AmbientWorld() {
         dolphinBodyMaterial.color.copy(lightTheme ? palette.accentStrong : palette.accent);
         dolphinBellyMaterial.color.copy(palette.surface).lerp(palette.accent, lightTheme ? 0.12 : 0.3);
         dolphinFinMaterial.color.copy(palette.accentStrong);
-        dolphinEyeMaterial.color.copy(palette.ink);
+        dolphinEyeMaterial.color.set(lightTheme ? 0x071722 : 0x050f16);
+        host.dataset.dolphinEye = lightTheme ? "deep-ink-light" : "deep-ink-dark";
         dolphinOutlineMaterial.color.copy(lightTheme ? palette.accentStrong : palette.surface);
         dolphinMouthMaterial.color.copy(palette.ink);
         dolphinBodyMaterial.opacity = lightTheme ? 0.74 : 0.68;
@@ -714,6 +799,7 @@ export default function AmbientWorld() {
         entities.forEach((entity) => {
           entity.fill.color.copy(palette.surface);
           entity.edge.color.copy(lightTheme ? palette.line : palette.accent);
+          entity.detail.color.copy(lightTheme ? palette.accentStrong : palette.surface);
         });
       };
 
@@ -821,6 +907,7 @@ export default function AmbientWorld() {
           child.fractureCooldown = 1.9;
           child.fill.color.copy(palette.surface);
           child.edge.color.copy(lightTheme ? palette.line : palette.accent);
+          child.detail.color.copy(lightTheme ? palette.accentStrong : palette.surface);
         });
         fractureCount += 1;
         host.dataset.fractureCount = String(fractureCount);
@@ -852,8 +939,7 @@ export default function AmbientWorld() {
         });
       };
 
-      const updateEntities = (time: number, delta: number) => {
-        const seconds = time * 0.001;
+      const simulateEntities = (seconds: number, delta: number) => {
         activeEntities.length = 0;
         fractureQueue.length = 0;
         queuedForFracture.clear();
@@ -893,7 +979,7 @@ export default function AmbientWorld() {
           entity.angularVelocity *= Math.exp(-0.22 * delta);
           entity.x += entity.vx * delta * currentProfile.entity;
           entity.y += entity.vy * delta * currentProfile.entity;
-          entity.group.rotation.z += entity.angularVelocity * delta;
+          entity.rotation += entity.angularVelocity * delta;
 
           const boundaryX = viewHalfWidth - entity.radius * 0.7;
           const boundaryY = viewHalfHeight - entity.radius * 0.7;
@@ -908,13 +994,6 @@ export default function AmbientWorld() {
             entity.hit = Math.max(entity.hit, 0.48);
           }
 
-          const breathe = 1 + Math.sin(seconds * 0.42 + entity.phase) * 0.022 + entity.hit * 0.06;
-          entity.group.position.set(entity.x, entity.y, entity.depth);
-          entity.group.scale.setScalar(breathe);
-          entity.fill.color.copy(palette.surface).lerp(palette.accent, entity.hit * 0.38);
-          entity.edge.color.copy(lightTheme ? palette.line : palette.accent).lerp(palette.accentStrong, entity.hit * 0.62);
-          entity.fill.opacity = (lightTheme ? 0.17 : 0.1) + entity.hit * 0.08;
-          entity.edge.opacity = (lightTheme ? 0.58 : 0.42) * currentProfile.entity + entity.hit * 0.16;
         });
 
         for (let firstIndex = 0; firstIndex < activeEntities.length; firstIndex += 1) {
@@ -931,6 +1010,26 @@ export default function AmbientWorld() {
             if (result.impact >= 0.82) queueFracture(first.level >= second.level ? first : second, result.impact);
           }
         }
+      };
+
+      const renderEntities = (seconds: number, alpha: number) => {
+        entities.forEach((entity) => {
+          if (!entity.alive) return;
+          const breathe = 1 + Math.sin(seconds * 0.42 + entity.phase) * 0.022 + entity.hit * 0.06;
+          entity.group.position.set(
+            lerp(entity.previousX, entity.x, alpha),
+            lerp(entity.previousY, entity.y, alpha),
+            entity.depth,
+          );
+          entity.group.rotation.z = lerpAngle(entity.previousRotation, entity.rotation, alpha);
+          entity.group.scale.setScalar(breathe);
+          entity.fill.color.copy(palette.surface).lerp(palette.accent, entity.hit * 0.32);
+          entity.edge.color.copy(lightTheme ? palette.line : palette.accent).lerp(palette.accentStrong, entity.hit * 0.56);
+          entity.detail.color.copy(lightTheme ? palette.accentStrong : palette.surface).lerp(palette.accent, entity.hit * 0.34);
+          entity.fill.opacity = (lightTheme ? 0.24 : 0.12) + entity.hit * 0.07;
+          entity.edge.opacity = (lightTheme ? 0.78 : 0.46) * currentProfile.entity + entity.hit * 0.14;
+          entity.detail.opacity = (lightTheme ? 0.6 : 0.34) * currentProfile.entity + entity.hit * 0.1;
+        });
       };
 
       const simulateJellies = (seconds: number, delta: number) => {
@@ -985,7 +1084,11 @@ export default function AmbientWorld() {
             jelly.y = -viewHalfHeight - margin;
             wrapped = true;
           }
-          if (wrapped) resetJellyTentacles(jelly);
+          if (wrapped) {
+            jelly.previousX = jelly.x;
+            jelly.previousY = jelly.y;
+            resetJellyTentacles(jelly);
+          }
 
           jelly.tentacles.forEach((tentacle) => {
             advanceRibbonChain(
@@ -1003,14 +1106,18 @@ export default function AmbientWorld() {
         });
       };
 
-      const renderJellies = (seconds: number) => {
+      const renderJellies = (seconds: number, alpha: number) => {
         jellies.forEach((jelly) => {
           const pulseSample = sampleJellyPulse(seconds / jelly.cycleDuration + jelly.phase / (Math.PI * 2));
           const ambientBreath = Math.sin(seconds * 0.68 + jelly.phase) * 0.02;
           const depthProfile = sampleAmbientDepth(jelly.depth);
           const perspectiveScale = 0.82 + depthProfile.scale * 0.18;
-          jelly.group.position.set(jelly.x, jelly.y, -3.2 + jelly.depth * 2.4);
-          jelly.group.rotation.z = jelly.heading - Math.PI / 2
+          jelly.group.position.set(
+            lerp(jelly.previousX, jelly.x, alpha),
+            lerp(jelly.previousY, jelly.y, alpha),
+            -3.2 + jelly.depth * 2.4,
+          );
+          jelly.group.rotation.z = lerpAngle(jelly.previousHeading, jelly.heading, alpha) - Math.PI / 2
             + Math.sin(seconds * 0.46 + jelly.phase) * 0.032;
           jelly.group.scale.set(
             jelly.scale * perspectiveScale * (1 - pulseSample.contraction * 0.14 + ambientBreath),
@@ -1079,6 +1186,8 @@ export default function AmbientWorld() {
           routeSample.position.y + dolphinRepulsion.y + currentProfile.dolphinBiasY,
         );
         advanceDolphinSpine(dolphinSpine, dolphinHead, dolphinSwimClock, delta, dolphinScale);
+        const headFrame = sampleSpineFrame(dolphinSpine, 0);
+        dolphinForward.set(headFrame.tangent.x, headFrame.tangent.y);
       };
 
       const interactDolphinWithEntities = () => {
@@ -1114,14 +1223,21 @@ export default function AmbientWorld() {
         });
       };
 
-      const renderDolphin = () => {
-        const headFrame = sampleSpineFrame(dolphinSpine, 0);
-        dolphinForward.set(headFrame.tangent.x, headFrame.tangent.y);
-        updateDolphinGeometry();
+      const renderDolphin = (alpha: number) => {
+        if (renderDolphinSpine.length !== dolphinSpine.length) {
+          renderDolphinSpine = dolphinSpine.map((point) => ({ ...point }));
+        }
+        dolphinSpine.forEach((point, index) => {
+          const previous = previousDolphinSpine[index] || point;
+          renderDolphinSpine[index].x = lerp(previous.x, point.x, alpha);
+          renderDolphinSpine[index].y = lerp(previous.y, point.y, alpha);
+        });
+        updateDolphinGeometry(renderDolphinSpine);
         const visibility = (0.72 + currentProfile.energy * 0.28) * dolphinTextVisibility;
         dolphinBodyMaterial.opacity = (lightTheme ? 0.74 : 0.68) * visibility;
         dolphinBellyMaterial.opacity = (lightTheme ? 0.62 : 0.58) * visibility;
         dolphinFinMaterial.opacity = (lightTheme ? 0.72 : 0.66) * visibility;
+        dolphinEyeMaterial.opacity = 0.9 * visibility;
         dolphinOutlineMaterial.opacity = (lightTheme ? 0.78 : 0.72) * visibility;
         dolphinMouthMaterial.opacity = (lightTheme ? 0.68 : 0.62) * visibility;
       };
@@ -1169,13 +1285,21 @@ export default function AmbientWorld() {
           if (particle.y > viewHalfHeight + 0.3) {
             particle.y = -viewHalfHeight - 0.3;
             particle.x = random() * viewHalfWidth * 2 - viewHalfWidth;
+            particle.previousX = particle.x;
+            particle.previousY = particle.y;
           }
-          if (particle.x < -viewHalfWidth - 0.4) particle.x = viewHalfWidth + 0.4;
-          if (particle.x > viewHalfWidth + 0.4) particle.x = -viewHalfWidth - 0.4;
+          if (particle.x < -viewHalfWidth - 0.4) {
+            particle.x = viewHalfWidth + 0.4;
+            particle.previousX = particle.x;
+          }
+          if (particle.x > viewHalfWidth + 0.4) {
+            particle.x = -viewHalfWidth - 0.4;
+            particle.previousX = particle.x;
+          }
         });
       };
 
-      const renderParticles = (seconds: number) => {
+      const renderParticles = (seconds: number, alpha: number) => {
         particleLayers.forEach((layer) => {
           layer.particles.forEach((particle, index) => {
             const twinkle = 0.68 + Math.sin(seconds * (0.72 + particle.speed) + particle.phase) * 0.28;
@@ -1183,8 +1307,10 @@ export default function AmbientWorld() {
               * (0.74 + currentProfile.particle * 0.26);
             sharedMatrix.makeScale(scale, scale, scale);
             sharedMatrix.setPosition(
-              particle.x + Math.sin(seconds * 0.32 + particle.phase) * 0.05 * particle.drift,
-              particle.y + Math.cos(seconds * 0.27 + particle.phase) * 0.04 * particle.drift,
+              lerp(particle.previousX, particle.x, alpha)
+                + Math.sin(seconds * 0.32 + particle.phase) * 0.05 * particle.drift,
+              lerp(particle.previousY, particle.y, alpha)
+                + Math.cos(seconds * 0.27 + particle.phase) * 0.04 * particle.drift,
               particle.z,
             );
             layer.mesh.setMatrixAt(index, sharedMatrix);
@@ -1203,12 +1329,35 @@ export default function AmbientWorld() {
         });
       };
 
-      const render = (time: number) => {
-        if (destroyed || !pageVisible) return;
-        const frameDelta = Math.max(0, (time - lastTime) / 1000);
-        lastTime = time;
-        const substeps = calculateSimulationSubsteps(frameDelta);
-        const profileEase = Math.min(1, substeps.simulatedDelta * 0.72);
+      const snapshotSimulationState = () => {
+        entities.forEach((entity) => {
+          if (!entity.alive) return;
+          entity.previousX = entity.x;
+          entity.previousY = entity.y;
+          entity.previousRotation = entity.rotation;
+        });
+        jellies.forEach((jelly) => {
+          jelly.previousX = jelly.x;
+          jelly.previousY = jelly.y;
+          jelly.previousHeading = jelly.heading;
+        });
+        particles.forEach((particle) => {
+          particle.previousX = particle.x;
+          particle.previousY = particle.y;
+        });
+        if (previousDolphinSpine.length !== dolphinSpine.length) {
+          previousDolphinSpine = dolphinSpine.map((point) => ({ ...point }));
+        } else {
+          dolphinSpine.forEach((point, index) => {
+            previousDolphinSpine[index].x = point.x;
+            previousDolphinSpine[index].y = point.y;
+          });
+        }
+      };
+
+      const simulateFixedStep = (delta: number) => {
+        snapshotSimulationState();
+        const profileEase = Math.min(1, delta * 0.72);
         currentProfile.energy = lerp(currentProfile.energy, targetProfile.energy, profileEase);
         currentProfile.entity = lerp(currentProfile.entity, targetProfile.entity, profileEase);
         currentProfile.particle = lerp(currentProfile.particle, targetProfile.particle, profileEase);
@@ -1216,22 +1365,42 @@ export default function AmbientWorld() {
         currentProfile.dolphinSpeed = lerp(currentProfile.dolphinSpeed, targetProfile.dolphinSpeed, profileEase);
         currentProfile.dolphinBiasY = lerp(currentProfile.dolphinBiasY, targetProfile.dolphinBiasY, profileEase);
         currentProfile.flow = lerp(currentProfile.flow, targetProfile.flow, profileEase);
-        pointer.speed *= Math.exp(-3.2 * substeps.simulatedDelta);
-        pulse *= Math.exp(-2.8 * substeps.simulatedDelta);
-        updatePointerWorld();
-        for (let step = 0; step < substeps.count; step += 1) {
-          simulationClock += substeps.delta;
-          simulateDolphin(substeps.delta);
-          simulateJellies(simulationClock, substeps.delta);
-          simulateParticles(simulationClock, substeps.delta);
-        }
-        updateFlowRibbons(simulationClock * 1000);
-        updateEntities(simulationClock * 1000, substeps.simulatedDelta);
+        pointer.speed *= Math.exp(-3.2 * delta);
+        pulse *= Math.exp(-2.8 * delta);
+        simulationClock += delta;
+        simulationTick += 1;
+        simulateDolphin(delta);
+        simulateJellies(simulationClock, delta);
+        simulateParticles(simulationClock, delta);
+        simulateEntities(simulationClock, delta);
         interactDolphinWithEntities();
         fractureQueue.forEach(fractureEntity);
-        renderDolphin();
-        renderJellies(simulationClock);
-        renderParticles(simulationClock);
+      };
+
+      const render = (time: number) => {
+        if (destroyed || !pageVisible) return;
+        const frameDelta = Math.max(0, (time - lastTime) / 1000);
+        lastTime = time;
+        const schedule = scheduleFixedSimulation(simulationAccumulator, frameDelta);
+        simulationAccumulator = schedule.accumulator;
+        updatePointerWorld();
+        for (let step = 0; step < schedule.count; step += 1) {
+          simulateFixedStep(schedule.delta);
+        }
+        const renderSeconds = Math.max(
+          0,
+          simulationClock - AMBIENT_FIXED_STEP + schedule.alpha * AMBIENT_FIXED_STEP,
+        );
+        host.dataset.simulationTick = String(simulationTick);
+        host.dataset.simulationStep = "60hz";
+        if (schedule.droppedDelta > 0) {
+          host.dataset.droppedTimeMs = schedule.droppedDelta.toFixed(3);
+        }
+        updateFlowRibbons(renderSeconds * 1000);
+        renderEntities(renderSeconds, schedule.alpha);
+        renderDolphin(schedule.alpha);
+        renderJellies(renderSeconds, schedule.alpha);
+        renderParticles(renderSeconds, schedule.alpha);
         renderer.render(scene, camera);
         if (!hasRendered) {
           host.dataset.status = "ready";
@@ -1244,6 +1413,7 @@ export default function AmbientWorld() {
         window.cancelAnimationFrame(frame);
         if (!pageVisible || destroyed) return;
         lastTime = performance.now();
+        simulationAccumulator = 0;
         frame = window.requestAnimationFrame(render);
       };
 
@@ -1347,6 +1517,8 @@ export default function AmbientWorld() {
       data-quality="static"
       data-creature="same-side-dolphin"
       data-pointer-force="repel"
+      data-entity-visual="marine-still-life"
+      data-simulation-step="60hz"
       data-entity-count="0"
       data-organism-count="0"
       data-fracture-count="0"
@@ -1357,9 +1529,9 @@ export default function AmbientWorld() {
         <span className="ambient-static-flow ambient-static-flow-one"></span>
         <span className="ambient-static-flow ambient-static-flow-two"></span>
         <span className="ambient-static-flow ambient-static-flow-three"></span>
-        <span className="ambient-static-shape ambient-static-shape-one"></span>
-        <span className="ambient-static-shape ambient-static-shape-two"></span>
-        <span className="ambient-static-shape ambient-static-shape-three"></span>
+        <span className="ambient-static-relic ambient-static-shell"></span>
+        <span className="ambient-static-relic ambient-static-sea-glass"></span>
+        <span className="ambient-static-relic ambient-static-coral"></span>
         <svg className="ambient-static-dolphin" viewBox="-4.05 -1.05 4.7 2.1">
           <path className="ambient-static-dolphin-fin" d="M-1.12-.58C-1.38-.95-1.69-1.02-1.91-.46C-1.62-.53-1.36-.57-1.12-.58Z" />
           <path className="ambient-static-dolphin-tail" d="M-2.93-.08C-3.19-.14-3.39-.4-3.76-.49C-3.67-.24-3.52-.08-3.21-.005C-3.52.04-3.72.18-3.86.42C-3.43.37-3.2.16-2.95.07Z" />

@@ -8,11 +8,47 @@ import {
   sampleAmbientDepth,
   sampleJellyPulse,
   sampleOceanFlow,
+  scheduleFixedSimulation,
   schoolingSteer,
   type SolidBodyState,
 } from "../src/lib/ambientSimulation";
 
 describe("ambient entity rules", () => {
+  test("fixed-step scheduling produces identical logic ticks at 30, 60, and 120 fps", () => {
+    const countTicks = (fps: number, seconds: number) => {
+      let accumulator = 0;
+      let ticks = 0;
+      let simulatedTime = 0;
+      for (let frame = 0; frame < fps * seconds; frame += 1) {
+        const schedule = scheduleFixedSimulation(accumulator, 1 / fps);
+        accumulator = schedule.accumulator;
+        ticks += schedule.count;
+        simulatedTime += schedule.simulatedDelta;
+      }
+      return { accumulator, ticks, simulatedTime };
+    };
+
+    const at30 = countTicks(30, 12);
+    const at60 = countTicks(60, 12);
+    const at120 = countTicks(120, 12);
+
+    expect(at30.ticks).toBe(720);
+    expect(at60.ticks).toBe(at30.ticks);
+    expect(at120.ticks).toBe(at30.ticks);
+    expect(at30.simulatedTime).toBeCloseTo(12, 10);
+    expect(at60.simulatedTime).toBeCloseTo(at30.simulatedTime, 10);
+    expect(at120.simulatedTime).toBeCloseTo(at30.simulatedTime, 10);
+    expect(at120.accumulator).toBeLessThan(1e-9);
+  });
+
+  test("fixed-step scheduling caps catch-up work after a long frame", () => {
+    const schedule = scheduleFixedSimulation(0, 2);
+    expect(schedule.count).toBe(8);
+    expect(schedule.simulatedDelta).toBeCloseTo(8 / 60, 10);
+    expect(schedule.droppedDelta).toBeGreaterThan(1.8);
+    expect(schedule.alpha).toBe(0);
+  });
+
   test("depth profiles make distant pixels smaller, dimmer and slower", () => {
     const far = sampleAmbientDepth(0.08);
     const middle = sampleAmbientDepth(0.5);
