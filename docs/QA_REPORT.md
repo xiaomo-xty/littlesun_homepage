@@ -492,3 +492,37 @@ v0.7 满足海洋静物、双主题眼睛修正、固定时间步、WebGPU 优�
 - `git diff --check`：通过。
 - 全新 1280 x 720 WebGPU 标签为 `full / ready`，横向溢出为 0，控制台无 warning 或 error。
 - 未修改 `D:\project\blog`。
+
+## 2026-08-22 / v0.8 叙事区块动效验收
+
+### 动效与交互
+
+- 文章标题与三行文章分别使用 Motion 的重复视口动画，离开文章区后实测透明度为 `0 / 0 / 0`，返回后可见行重新进入。
+- 文章摘要使用原生 `button`、`aria-expanded` 与 `aria-controls`；点击后说明文本可见，收起后状态同步。
+- 指针移动到文章行后，计算样式由单位矩阵变为低幅度 3D 矩阵，离开后由弹簧回正；连续值不进入 React state。
+- 关于区实测完成 `visible -> hidden -> visible`，9 个子元素同步完成隐藏和重播；联系区 5 个子元素按序进入。
+- 生活照片保持原第二张上移 18 px 的构图，进场与 hover 不改变最终布局。
+
+### 浏览器矩阵
+
+| 场景 | 结果 |
+| --- | --- |
+| 1280 x 720 / WebGPU / 深色 | 文章、关于、生活、联系动效可见，0 横向溢出 |
+| 1280 x 720 / WebGPU / 浅色 | 文字、线条和文章占位图对比清晰，0 横向溢出 |
+| 390 x 844 / WebGPU / 浅色 | 标题无裁切，摘要按钮 44 px，0 横向溢出 |
+| 1280 x 720 / WebGL2 | 3 篇文章正常水合，0 横向溢出，无 console warning/error |
+| 1280 x 720 / static | 3 篇文章正常水合，0 横向溢出，无 console warning/error |
+
+### 无障碍与降级
+
+- `prefers-reduced-motion` 下关闭区块位移、照片 hover、兴趣文字 hover、轴节点旋转、联系链接位移与文章占位图旋转。
+- React 文章树不再被外部观察器提前写入属性，干净会话无 hydration mismatch。
+- 当前浏览器接口不提供媒体特性模拟，因此低动态模式完成代码路径审计，未生成运行时媒体切换截图。
+
+### 质量门禁
+
+- `bun test`：34 passed、0 failed。
+- `bun run check`：0 errors、0 warnings、0 hints。
+- `bun run build`：2 个静态路由构建成功。
+- `git diff --check`：通过。
+- 未修改 `D:\project\blog`。

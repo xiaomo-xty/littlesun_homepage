@@ -3,8 +3,18 @@
   const observed = new Map<Element, number>();
   const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
 
+  const setMotionState = (element: HTMLElement, visible: boolean) => {
+    const state = visible ? "visible" : "hidden";
+    element.querySelectorAll<HTMLElement>("[data-motion-item]").forEach((item, index) => {
+      item.dataset.motionState = state;
+      item.style.setProperty("--motion-index", String(index));
+    });
+  };
+
   const setPresence = (element: HTMLElement, visible: boolean) => {
-    element.dataset.revealState = visible ? "visible" : "hidden";
+    const state = visible ? "visible" : "hidden";
+    element.dataset.revealState = state;
+    setMotionState(element, visible);
     window.dispatchEvent(new CustomEvent("homepage:section-presence", {
       detail: {
         id: element.id || element.dataset.reveal || "section",
@@ -50,6 +60,7 @@
 
     document.querySelectorAll<HTMLElement>("[data-reveal]").forEach((element) => {
       element.dataset.revealState = "hidden";
+      setMotionState(element, false);
       observer.observe(element);
     });
 
