@@ -17,13 +17,6 @@ export type CollisionResult = {
   ny: number;
 };
 
-export type FracturePiece = {
-  kind: SolidKind;
-  level: number;
-  radiusRatio: number;
-  direction: Vector2Like;
-};
-
 export type BoidState = Vector2Like & {
   vx: number;
   vy: number;
@@ -63,8 +56,8 @@ export type FixedStepSchedule = {
 
 export const AMBIENT_FIXED_STEP = 1 / 60;
 export const AMBIENT_MAX_FIXED_STEPS = 8;
-export const AMBIENT_ENTITY_RESTITUTION = 0.28;
-export const AMBIENT_ENTITY_MAX_SPEED = 0.72;
+export const AMBIENT_ENTITY_RESTITUTION = 0.08;
+export const AMBIENT_ENTITY_MAX_SPEED = 0.3;
 export const AMBIENT_JELLY_MAX_SPEED = 0.24;
 
 export function scheduleFixedSimulation(
@@ -110,22 +103,70 @@ export function limitSolidSpeed<T extends SolidBodyState>(body: T, maximumSpeed 
   return limitMotionSpeed(body, maximumSpeed);
 }
 
-export function destructibleWeight(level: number, radius: number) {
-  const safeLevel = Math.max(0, level);
-  const safeRadius = Math.max(0, radius);
-  return safeRadius * safeRadius * (1 + safeLevel * 0.35);
+export function wrapDriftingBody<T extends Vector2Like>(
+  body: T,
+  halfWidth: number,
+  halfHeight: number,
+  margin = 0,
+) {
+  const extentX = Math.max(0.001, halfWidth + Math.max(0, margin));
+  const extentY = Math.max(0.001, halfHeight + Math.max(0, margin));
+  const spanX = extentX * 2;
+  const spanY = extentY * 2;
+  let wrapped = false;
+
+  while (body.x < -extentX) {
+    body.x += spanX;
+    wrapped = true;
+  }
+  while (body.x > extentX) {
+    body.x -= spanX;
+    wrapped = true;
+  }
+  while (body.y < -extentY) {
+    body.y += spanY;
+    wrapped = true;
+  }
+  while (body.y > extentY) {
+    body.y -= spanY;
+    wrapped = true;
+  }
+
+  return wrapped;
 }
 
-export function shouldRegenerateDestructibles(
-  currentWeight: number,
-  lowerThreshold: number,
-  upperThreshold: number,
-  currentlyActive: boolean,
+export function gentlyDisplaceBody(
+  body: SolidBodyState,
+  obstacle: Vector2Like,
+  minimumDistance: number,
+  pusherVelocity: Vector2Like,
+  maximumSpeed = AMBIENT_ENTITY_MAX_SPEED,
 ) {
-  const lower = Math.max(0, Math.min(lowerThreshold, upperThreshold));
-  const upper = Math.max(lower, lowerThreshold, upperThreshold);
-  const current = Math.max(0, currentWeight);
-  return currentlyActive ? current < upper : current < lower;
+  const safeDistance = Math.max(0.001, minimumDistance);
+  const dx = body.x - obstacle.x;
+  const dy = body.y - obstacle.y;
+  const distance = Math.hypot(dx, dy);
+  if (distance >= safeDistance) return false;
+
+  const pusherLength = Math.hypot(pusherVelocity.x, pusherVelocity.y);
+  const nx = distance > 0.0001
+    ? dx / distance
+    : pusherLength > 0.0001 ? -pusherVelocity.y / pusherLength : 1;
+  const ny = distance > 0.0001
+    ? dy / distance
+    : pusherLength > 0.0001 ? pusherVelocity.x / pusherLength : 0;
+  const overlapRatio = Math.max(0, Math.min(1, (safeDistance - distance) / safeDistance));
+  const correction = Math.min(safeDistance * 0.14, (safeDistance - distance) * 0.48);
+  body.x += nx * correction;
+  body.y += ny * correction;
+
+  const forwardPush = Math.max(0, pusherVelocity.x * nx + pusherVelocity.y * ny);
+  const targetSpeed = Math.min(maximumSpeed, 0.06 + forwardPush * 0.12 + overlapRatio * 0.08);
+  const blend = 0.07 + overlapRatio * 0.09;
+  body.vx += (nx * targetSpeed - body.vx) * blend;
+  body.vy += (ny * targetSpeed - body.vy) * blend;
+  limitSolidSpeed(body, maximumSpeed);
+  return true;
 }
 
 function smoothstep(value: number) {
@@ -236,41 +277,6 @@ export function resolveCircleCollision(
   output.nx = nx;
   output.ny = ny;
   return output;
-}
-
-export function fracturePattern(kind: SolidKind, level: number): FracturePiece[] {
-  if (level <= 0) return [];
-  const nextLevel = level - 1;
-
-  if (kind === "circle") {
-    return [0, 1, 2].map((index) => {
-      const angle = index / 3 * Math.PI * 2;
-      return {
-        kind: "triangle" as const,
-        level: nextLevel,
-        radiusRatio: 0.46,
-        direction: { x: Math.cos(angle), y: Math.sin(angle) },
-      };
-    });
-  }
-
-  if (kind === "rect") {
-    return [
-      { kind: "rect", level: nextLevel, radiusRatio: 0.52, direction: { x: -0.82, y: 0.18 } },
-      { kind: "rect", level: nextLevel, radiusRatio: 0.48, direction: { x: 0.78, y: -0.24 } },
-      { kind: "triangle", level: nextLevel, radiusRatio: 0.38, direction: { x: -0.2, y: -0.9 } },
-      { kind: "triangle", level: nextLevel, radiusRatio: 0.36, direction: { x: 0.28, y: 0.86 } },
-    ];
-  }
-
-  return [
-    { kind: "triangle", level: nextLevel, radiusRatio: 0.58, direction: { x: -0.74, y: -0.36 } },
-    { kind: "triangle", level: nextLevel, radiusRatio: 0.56, direction: { x: 0.72, y: 0.4 } },
-  ];
-}
-
-export function canFracture(level: number, impact: number, entityCount: number, entityLimit: number) {
-  return level >= 0 && impact >= 0.82 && entityCount <= entityLimit;
 }
 
 export function sampleOceanFlow(
