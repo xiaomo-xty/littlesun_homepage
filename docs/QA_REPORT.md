@@ -555,3 +555,38 @@ v0.7 满足海洋静物、双主题眼睛修正、固定时间步、WebGPU 优�
 - `git diff --check`：通过。
 - 干净 WebGPU 标签运行约 2.5 秒后为 `ready`，逻辑 tick 持续推进，console 无 warning 或 error。
 - 未修改 `D:\project\blog`。
+
+## 2026-08-23 / v0.10 生物运动与选择性发光验收
+
+### 根因与渲染边界
+
+- 固定鱼影来自动态后端下仍保留 `0.07` 不透明度的 `.ambient-static-fallback`，不是 WebGPU 重复创建海豚。
+- WebGPU 与 WebGL2 准备完成后，兜底层计算不透明度均为 `0`；static 模式仍为 `0.58`，画布不透明度为 `0`。
+- 仅近景像素层拥有实例化辉光网格；海花、海玻璃、水母和海豚拥有独立 additive halo；珊瑚不发光。
+- 深色运行时为 `data-glow-theme="bioluminescent"`，浅色为 `highlight`，发光层不改变正文或人像占位的布局。
+
+### 水母生命感
+
+- 水母使用 `data-jelly-motion="pulse-glide"`：快速收缩、短促推进、阻尼滑行和舒张复原形成完整循环。
+- 朝向在推进阶段响应更明显，平时保留缓慢游移；显示阶段加入与朝向垂直的低幅度身体横摆。
+- 触手链在固定逻辑步中保持头部连接，显示阶段的波动沿链向末端延迟传播。
+- 发光采样纯函数验证亮度随推进达到峰值，随后回落到弱余辉，所有输出保持在 `[0, 1]`。
+
+### 浏览器矩阵
+
+| 场景 | 结果 |
+| --- | --- |
+| 默认桌面 / WebGPU / 深色 | `webgpu / full / ready`，兜底层为 0，生物发光可见 |
+| 默认桌面 / WebGPU / 浅色 | `webgpu / full / ready`，兜底层为 0，仅保留弱高光 |
+| 390 x 844 / WebGPU / 浅色与深色 | 横向溢出为 0，海豚、静物和正文层级正常 |
+| 390 x 844 / WebGL2 | `webgl2 / balanced / ready`，固定步进与局部发光保留 |
+| 390 x 844 / static | `static / static / ready`，静态兜底可见且画布透明 |
+
+### 自动化与质量门禁
+
+- `bun test`：33 passed、0 failed。
+- `bun run check`：0 errors、0 warnings、0 hints。
+- `bun run build`：2 个静态路由构建成功。
+- `git diff --check`：通过。
+- 浏览器各后端控制台均无 warning 或 error。
+- 未修改 `D:\project\blog`。

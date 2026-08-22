@@ -12,6 +12,7 @@ import {
   pointerRepulsion,
   resolveCircleCollision,
   sampleAmbientDepth,
+  sampleJellyLuminescence,
   sampleJellyPulse,
   sampleOceanFlow,
   scheduleFixedSimulation,
@@ -62,6 +63,7 @@ type OceanEntity = SolidBodyState & {
   fill: THREE.MeshBasicMaterial;
   edge: THREE.LineBasicMaterial;
   detail: THREE.LineBasicMaterial;
+  glow?: THREE.MeshBasicMaterial;
   hit: number;
   phase: number;
   depth: number;
@@ -96,6 +98,8 @@ type OceanParticle = {
 type ParticleLayer = {
   mesh: THREE.InstancedMesh;
   material: THREE.MeshBasicMaterial;
+  glowMesh?: THREE.InstancedMesh;
+  glowMaterial?: THREE.MeshBasicMaterial;
   particles: OceanParticle[];
   depthRange: readonly [number, number];
 };
@@ -118,11 +122,13 @@ type AmbientJelly = Vector2Like & {
   depth: number;
   cycleDuration: number;
   pulseStrength: number;
+  swimRate: number;
   heading: number;
   previousHeading: number;
   group: THREE.Group;
   fill: THREE.MeshBasicMaterial;
   edge: THREE.LineBasicMaterial;
+  glow: THREE.MeshBasicMaterial;
   tentacles: JellyTentacle[];
 };
 
@@ -201,6 +207,9 @@ export default function AmbientWorld() {
     host.dataset.entityVisual = "marine-still-life";
     host.dataset.contactModel = "gentle-displacement";
     host.dataset.entityModel = "fixed-drift";
+    host.dataset.glowModel = "selective-additive";
+    host.dataset.jellyMotion = "pulse-glide";
+    host.dataset.staticOverlay = "fallback-only";
     host.dataset.entityScale = "small";
     host.dataset.relicSet = "sea-bloom-sea-glass-coral";
     host.dataset.entityRadiusMax = "0";
@@ -312,9 +321,9 @@ export default function AmbientWorld() {
 
       const particleGeometry = register(new THREE.BoxGeometry(0.05, 0.05, 0.025));
       const particleLayerSpecs = [
-        { count: balanced ? 28 : 48, depthRange: [0.02, 0.34] as const, renderOrder: 18 },
-        { count: balanced ? 14 : 26, depthRange: [0.38, 0.72] as const, renderOrder: 70 },
-        { count: balanced ? 6 : 10, depthRange: [0.8, 1] as const, renderOrder: 112 },
+        { count: balanced ? 28 : 48, depthRange: [0.02, 0.34] as const, renderOrder: 18, glow: false },
+        { count: balanced ? 14 : 26, depthRange: [0.38, 0.72] as const, renderOrder: 70, glow: false },
+        { count: balanced ? 6 : 10, depthRange: [0.8, 1] as const, renderOrder: 112, glow: true },
       ];
       const particleLayers: ParticleLayer[] = particleLayerSpecs.map((spec) => {
         const material = register(new THREE.MeshBasicMaterial({
@@ -327,6 +336,24 @@ export default function AmbientWorld() {
         mesh.frustumCulled = false;
         mesh.renderOrder = spec.renderOrder;
         world.add(mesh);
+        const glowMaterial = spec.glow
+          ? register(new THREE.MeshBasicMaterial({
+              transparent: true,
+              depthTest: false,
+              depthWrite: false,
+              vertexColors: true,
+              blending: THREE.AdditiveBlending,
+              toneMapped: false,
+            }))
+          : undefined;
+        const glowMesh = glowMaterial
+          ? new THREE.InstancedMesh(particleGeometry, glowMaterial, spec.count)
+          : undefined;
+        if (glowMesh) {
+          glowMesh.frustumCulled = false;
+          glowMesh.renderOrder = spec.renderOrder - 1;
+          world.add(glowMesh);
+        }
         const layerParticles = Array.from({ length: spec.count }, (): OceanParticle => {
           const depth = spec.depthRange[0] + random() * (spec.depthRange[1] - spec.depthRange[0]);
           const depthProfile = sampleAmbientDepth(depth);
@@ -352,7 +379,14 @@ export default function AmbientWorld() {
           particle.previousY = particle.y;
           return particle;
         });
-        return { mesh, material, particles: layerParticles, depthRange: spec.depthRange };
+        return {
+          mesh,
+          material,
+          glowMesh,
+          glowMaterial,
+          particles: layerParticles,
+          depthRange: spec.depthRange,
+        };
       });
       const particles = particleLayers.flatMap((layer) => layer.particles);
 
@@ -418,13 +452,24 @@ export default function AmbientWorld() {
           depthTest: false,
           depthWrite: false,
         }));
+        const glow = register(new THREE.MeshBasicMaterial({
+          transparent: true,
+          side: THREE.DoubleSide,
+          depthTest: false,
+          depthWrite: false,
+          blending: THREE.AdditiveBlending,
+          toneMapped: false,
+        }));
+        const halo = new THREE.Mesh(jellyGeometry, glow);
         const bell = new THREE.Mesh(jellyGeometry, fill);
         const outline = new THREE.LineSegments(jellyEdgeGeometry, edge);
         const group = new THREE.Group();
         const renderOrder = 52 + Math.round(depth * 30);
+        halo.renderOrder = renderOrder - 1;
+        halo.scale.set(1.2, 1.14, 1);
         bell.renderOrder = renderOrder;
         outline.renderOrder = renderOrder + 1;
-        group.add(bell, outline);
+        group.add(halo, bell, outline);
         group.position.set(x, y, -3.2 + depth * 2.4);
         group.frustumCulled = false;
         world.add(group);
@@ -446,6 +491,8 @@ export default function AmbientWorld() {
             transparent: true,
             depthTest: false,
             depthWrite: false,
+            blending: THREE.AdditiveBlending,
+            toneMapped: false,
           }));
           const line = new THREE.Line(geometry, material);
           line.frustumCulled = false;
@@ -465,13 +512,15 @@ export default function AmbientWorld() {
           depth,
           phase,
           scale,
-          cycleDuration: 2.9 + random() * 1.05,
-          pulseStrength: 0.28 + random() * 0.14,
+          cycleDuration: 2.15 + random() * 0.85,
+          pulseStrength: 0.36 + random() * 0.14,
+          swimRate: 0.18 + random() * 0.08,
           heading,
           previousHeading: heading,
           group,
           fill,
           edge,
+          glow,
           tentacles,
         });
       };
@@ -614,6 +663,17 @@ export default function AmbientWorld() {
         const geometry = register(new THREE.ShapeGeometry(createEntityShape(kind, radius), balanced ? 8 : 12));
         const fill = register(new THREE.MeshBasicMaterial({ transparent: true, side: THREE.DoubleSide, depthWrite: false }));
         const mesh = new THREE.Mesh(geometry, fill);
+        const glow = kind === "triangle"
+          ? undefined
+          : register(new THREE.MeshBasicMaterial({
+              transparent: true,
+              side: THREE.DoubleSide,
+              depthTest: false,
+              depthWrite: false,
+              blending: THREE.AdditiveBlending,
+              toneMapped: false,
+            }));
+        const halo = glow ? new THREE.Mesh(geometry, glow) : undefined;
         const edgeGeometry = register(new THREE.EdgesGeometry(geometry, 36));
         const edge = register(new THREE.LineBasicMaterial({ transparent: true, depthWrite: false }));
         const edges = new THREE.LineSegments(edgeGeometry, edge);
@@ -621,6 +681,14 @@ export default function AmbientWorld() {
         const detailGeometry = register(createEntityDetailGeometry(kind, radius));
         const details = new THREE.LineSegments(detailGeometry, detail);
         const group = new THREE.Group();
+        if (halo) {
+          halo.renderOrder = 32;
+          halo.scale.setScalar(kind === "circle" ? 1.24 : 1.16);
+          group.add(halo);
+        }
+        mesh.renderOrder = 33;
+        edges.renderOrder = 34;
+        details.renderOrder = 35;
         group.add(mesh, edges, details);
         world.add(group);
         const rotation = (random() - 0.5) * 0.34;
@@ -632,6 +700,7 @@ export default function AmbientWorld() {
           fill,
           edge,
           detail,
+          glow,
           hit: 0,
           phase: random() * Math.PI * 2,
           depth: -0.72 - random() * 1.32,
@@ -696,6 +765,9 @@ export default function AmbientWorld() {
       const dolphinBellyMaterial = createDolphinMaterial(0xb5e4ec);
       const dolphinFinMaterial = createDolphinMaterial(0x3c94bd);
       const dolphinEyeMaterial = createDolphinMaterial(0x071722);
+      const dolphinGlowMaterial = createDolphinMaterial(0x58b4dc);
+      dolphinGlowMaterial.blending = THREE.AdditiveBlending;
+      dolphinGlowMaterial.toneMapped = false;
       const dolphinOutlineMaterial = register(new THREE.LineBasicMaterial({
         color: 0xc4eff7,
         transparent: true,
@@ -732,7 +804,16 @@ export default function AmbientWorld() {
         addDolphinPart(geometry, mesh, order);
       };
 
+      const addDolphinGlowShape = (shape: THREE.Shape) => {
+        const geometry = register(new THREE.ShapeGeometry(shape, balanced ? 18 : 28));
+        geometry.scale(1.035, 1.16, 1);
+        const mesh = new THREE.Mesh(geometry, dolphinGlowMaterial);
+        mesh.position.z = -0.115;
+        addDolphinPart(geometry, mesh, 87);
+      };
+
       const dolphinBodyShape = createDolphinBodyShape();
+      addDolphinGlowShape(dolphinBodyShape);
       addDolphinShape(createDolphinTailShape(), dolphinFinMaterial, 88);
       addDolphinShape(createDolphinDorsalFinShape(), dolphinFinMaterial, 89);
       addDolphinShape(dolphinBodyShape, dolphinBodyMaterial, 90);
@@ -858,17 +939,21 @@ export default function AmbientWorld() {
         dolphinBellyMaterial.color.copy(palette.surface).lerp(palette.accent, lightTheme ? 0.12 : 0.3);
         dolphinFinMaterial.color.copy(palette.accentStrong);
         dolphinEyeMaterial.color.set(lightTheme ? 0x071722 : 0x050f16);
+        dolphinGlowMaterial.color.copy(lightTheme ? palette.accentStrong : palette.accent);
         host.dataset.dolphinEye = lightTheme ? "deep-ink-light" : "deep-ink-dark";
+        host.dataset.glowTheme = lightTheme ? "highlight" : "bioluminescent";
         dolphinOutlineMaterial.color.copy(lightTheme ? palette.accentStrong : palette.surface);
         dolphinMouthMaterial.color.copy(palette.ink);
         dolphinBodyMaterial.opacity = lightTheme ? 0.74 : 0.68;
         dolphinBellyMaterial.opacity = lightTheme ? 0.62 : 0.58;
         dolphinFinMaterial.opacity = lightTheme ? 0.72 : 0.66;
+        dolphinGlowMaterial.opacity = lightTheme ? 0.012 : 0.075;
         dolphinOutlineMaterial.opacity = lightTheme ? 0.78 : 0.72;
         dolphinMouthMaterial.opacity = lightTheme ? 0.68 : 0.62;
         jellies.forEach((jelly) => {
           jelly.fill.color.copy(lightTheme ? palette.surface : palette.accent);
           jelly.edge.color.copy(lightTheme ? palette.accentStrong : palette.surface);
+          jelly.glow.color.copy(lightTheme ? palette.accentStrong : palette.accent);
           jelly.tentacles.forEach((tentacle) => tentacle.material.color.copy(palette.accent));
         });
         flowRibbons.forEach((ribbon) => ribbon.material.color.copy(lightTheme ? palette.line : palette.accent));
@@ -876,6 +961,7 @@ export default function AmbientWorld() {
           entity.fill.color.copy(palette.surface);
           entity.edge.color.copy(lightTheme ? palette.line : palette.accent);
           entity.detail.color.copy(lightTheme ? palette.accentStrong : palette.surface);
+          entity.glow?.color.copy(lightTheme ? palette.accentStrong : palette.accent);
         });
       };
 
@@ -1089,24 +1175,34 @@ export default function AmbientWorld() {
             * (currentProfile.entity + entity.hit * 0.1) * birthVisibility;
           entity.detail.opacity = (bloom ? (lightTheme ? 0.72 : 0.46) : (lightTheme ? 0.6 : 0.34))
             * (currentProfile.entity + entity.hit * 0.08) * birthVisibility;
+          if (entity.glow) {
+            const shimmer = 0.5 + Math.sin(seconds * 0.74 + entity.phase) * 0.5;
+            const glowBase = bloom ? 0.12 : 0.072;
+            entity.glow.opacity = (lightTheme ? 0.018 : glowBase)
+              * (0.58 + shimmer * 0.42)
+              * (currentProfile.entity + entity.hit * 0.12)
+              * birthVisibility;
+          }
         });
       };
 
       const simulateJellies = (seconds: number, delta: number) => {
         jellies.forEach((jelly) => {
-          const pulseSample = sampleJellyPulse(seconds / jelly.cycleDuration + jelly.phase / (Math.PI * 2));
+          const pulsePhase = seconds / jelly.cycleDuration + jelly.phase / (Math.PI * 2);
+          const pulseSample = sampleJellyPulse(pulsePhase);
           sampleOceanFlow(jelly, seconds + jelly.phase, flowForce);
+          const wander = Math.sin(seconds * jelly.swimRate + jelly.phase) * 0.42;
           const desiredHeading = Math.atan2(
-            0.15 + flowForce.y * 0.42 + jelly.vy * 0.24,
-            flowForce.x * 0.62 + jelly.vx * 0.24,
-          );
+            0.18 + flowForce.y * 0.36 + jelly.vy * 0.2,
+            flowForce.x * 0.54 + jelly.vx * 0.2,
+          ) + wander;
           const headingDelta = Math.atan2(
             Math.sin(desiredHeading - jelly.heading),
             Math.cos(desiredHeading - jelly.heading),
           );
-          jelly.heading += headingDelta * Math.min(1, delta * 0.54);
-          jelly.vx += flowForce.x * delta * 0.08 * currentProfile.flow;
-          jelly.vy += (flowForce.y * 0.058 * currentProfile.flow + 0.01) * delta;
+          jelly.heading += headingDelta * Math.min(1, delta * (0.68 + pulseSample.thrust * 0.72));
+          jelly.vx += flowForce.x * delta * 0.07 * currentProfile.flow;
+          jelly.vy += (flowForce.y * 0.052 * currentProfile.flow + 0.012) * delta;
           const thrust = pulseSample.thrust * jelly.pulseStrength
             * (0.76 + jelly.depth * 0.24) * currentProfile.jelly;
           jelly.vx += Math.cos(jelly.heading) * thrust * delta;
@@ -1127,8 +1223,8 @@ export default function AmbientWorld() {
           addSafeZoneForce(jelly.x, jelly.y, zoneForce, 0.9);
           jelly.vx += zoneForce.x * delta;
           jelly.vy += zoneForce.y * delta;
-          jelly.vx *= Math.exp(-1.72 * delta);
-          jelly.vy *= Math.exp(-1.72 * delta);
+          jelly.vx *= Math.exp(-1.28 * delta);
+          jelly.vy *= Math.exp(-1.28 * delta);
           limitMotionSpeed(jelly, AMBIENT_JELLY_MAX_SPEED);
           jelly.x += jelly.vx * delta;
           jelly.y += jelly.vy * delta;
@@ -1161,13 +1257,14 @@ export default function AmbientWorld() {
             advanceRibbonChain(
               tentacle.points,
               {
-                x: tentacle.offset * (1 - pulseSample.contraction * 0.14),
-                y: -0.03 + pulseSample.contraction * 0.075,
+                x: tentacle.offset * (1 - pulseSample.contraction * 0.18)
+                  + Math.sin(seconds * 1.22 + jelly.phase + tentacle.offset * 3) * 0.018,
+                y: -0.03 + pulseSample.contraction * 0.095 - pulseSample.thrust * 0.025,
               },
               delta,
-              0.16 * (1 - pulseSample.contraction * 0.06),
-              20,
-              6.4,
+              0.16 * (1 - pulseSample.contraction * 0.09),
+              18,
+              5.8,
             );
           });
         });
@@ -1175,38 +1272,46 @@ export default function AmbientWorld() {
 
       const renderJellies = (seconds: number, alpha: number) => {
         jellies.forEach((jelly) => {
-          const pulseSample = sampleJellyPulse(seconds / jelly.cycleDuration + jelly.phase / (Math.PI * 2));
-          const ambientBreath = Math.sin(seconds * 0.68 + jelly.phase) * 0.02;
+          const pulsePhase = seconds / jelly.cycleDuration + jelly.phase / (Math.PI * 2);
+          const pulseSample = sampleJellyPulse(pulsePhase);
+          const luminescence = sampleJellyLuminescence(pulsePhase);
+          const ambientBreath = Math.sin(seconds * 0.68 + jelly.phase) * 0.014;
           const depthProfile = sampleAmbientDepth(jelly.depth);
           const perspectiveScale = 0.82 + depthProfile.scale * 0.18;
+          const renderHeading = lerpAngle(jelly.previousHeading, jelly.heading, alpha);
+          const swimSway = Math.sin(seconds * (0.86 + jelly.swimRate) + jelly.phase)
+            * (0.018 + currentProfile.jelly * 0.018);
           jelly.group.position.set(
-            lerp(jelly.previousX, jelly.x, alpha),
-            lerp(jelly.previousY, jelly.y, alpha),
+            lerp(jelly.previousX, jelly.x, alpha) - Math.sin(renderHeading) * swimSway,
+            lerp(jelly.previousY, jelly.y, alpha) + Math.cos(renderHeading) * swimSway,
             -3.2 + jelly.depth * 2.4,
           );
-          jelly.group.rotation.z = lerpAngle(jelly.previousHeading, jelly.heading, alpha) - Math.PI / 2
-            + Math.sin(seconds * 0.46 + jelly.phase) * 0.032;
+          jelly.group.rotation.z = renderHeading - Math.PI / 2
+            + Math.sin(seconds * 0.62 + jelly.phase) * 0.05
+            + pulseSample.thrust * 0.018;
           jelly.group.scale.set(
-            jelly.scale * perspectiveScale * (1 - pulseSample.contraction * 0.14 + ambientBreath),
-            jelly.scale * perspectiveScale * (1 + pulseSample.contraction * 0.1 - ambientBreath * 0.7),
+            jelly.scale * perspectiveScale * (1 - pulseSample.contraction * 0.23 + ambientBreath),
+            jelly.scale * perspectiveScale * (1 + pulseSample.contraction * 0.14 - ambientBreath * 0.7),
             1,
           );
           const visibility = (0.72 + jelly.depth * 0.28) * currentProfile.jelly;
-          jelly.fill.opacity = (lightTheme ? 0.3 : 0.22) * visibility;
-          jelly.edge.opacity = (lightTheme ? 0.64 : 0.5) * visibility;
+          jelly.fill.opacity = (lightTheme ? 0.3 : 0.22 + luminescence * 0.035) * visibility;
+          jelly.edge.opacity = (lightTheme ? 0.64 : 0.48 + luminescence * 0.12) * visibility;
+          jelly.glow.opacity = (lightTheme ? 0.028 : 0.09 + luminescence * 0.15) * visibility;
 
           jelly.tentacles.forEach((tentacle, tentacleIndex) => {
             tentacle.points.forEach((point, pointIndex) => {
               const offset = pointIndex * 3;
               const trail = pointIndex / Math.max(1, tentacle.points.length - 1);
+              const trailWave = seconds * 1.38 + jelly.phase + tentacleIndex * 0.72 - pointIndex * 0.68;
               tentacle.positions[offset] = point.x
-                + Math.sin(seconds * 1.1 + jelly.phase + tentacleIndex + pointIndex * 0.5)
-                * trail * (0.022 + pulseSample.thrust * 0.016);
-              tentacle.positions[offset + 1] = point.y;
+                + Math.sin(trailWave) * trail * (0.032 + pulseSample.thrust * 0.028);
+              tentacle.positions[offset + 1] = point.y
+                + Math.cos(trailWave * 0.82) * trail * 0.014;
               tentacle.positions[offset + 2] = -0.02;
             });
             tentacle.attribute.needsUpdate = true;
-            tentacle.material.opacity = (lightTheme ? 0.48 : 0.42) * visibility;
+            tentacle.material.opacity = (lightTheme ? 0.34 : 0.34 + luminescence * 0.16) * visibility;
           });
         });
       };
@@ -1310,6 +1415,7 @@ export default function AmbientWorld() {
         dolphinBodyMaterial.opacity = (lightTheme ? 0.74 : 0.68) * visibility;
         dolphinBellyMaterial.opacity = (lightTheme ? 0.62 : 0.58) * visibility;
         dolphinFinMaterial.opacity = (lightTheme ? 0.72 : 0.66) * visibility;
+        dolphinGlowMaterial.opacity = (lightTheme ? 0.014 : 0.078) * visibility;
         dolphinEyeMaterial.opacity = 0.9 * visibility;
         dolphinOutlineMaterial.opacity = (lightTheme ? 0.78 : 0.72) * visibility;
         dolphinMouthMaterial.opacity = (lightTheme ? 0.68 : 0.62) * visibility;
@@ -1378,14 +1484,12 @@ export default function AmbientWorld() {
             const twinkle = 0.68 + Math.sin(seconds * (0.72 + particle.speed) + particle.phase) * 0.28;
             const scale = particle.size * particle.depthScale * twinkle
               * (0.74 + currentProfile.particle * 0.26);
+            const renderX = lerp(particle.previousX, particle.x, alpha)
+              + Math.sin(seconds * 0.32 + particle.phase) * 0.05 * particle.drift;
+            const renderY = lerp(particle.previousY, particle.y, alpha)
+              + Math.cos(seconds * 0.27 + particle.phase) * 0.04 * particle.drift;
             sharedMatrix.makeScale(scale, scale, scale);
-            sharedMatrix.setPosition(
-              lerp(particle.previousX, particle.x, alpha)
-                + Math.sin(seconds * 0.32 + particle.phase) * 0.05 * particle.drift,
-              lerp(particle.previousY, particle.y, alpha)
-                + Math.cos(seconds * 0.27 + particle.phase) * 0.04 * particle.drift,
-              particle.z,
-            );
+            sharedMatrix.setPosition(renderX, renderY, particle.z);
             layer.mesh.setMatrixAt(index, sharedMatrix);
             sharedColor.copy(lightTheme ? palette.surface : palette.ink).lerp(
               palette.accent,
@@ -1393,12 +1497,28 @@ export default function AmbientWorld() {
             );
             sharedColor.lerp(palette.accentStrong, Math.max(0, twinkle - 0.5) * 0.42);
             layer.mesh.setColorAt(index, sharedColor);
+            if (layer.glowMesh) {
+              const glowScale = scale * (1.82 + twinkle * 0.34);
+              sharedMatrix.makeScale(glowScale, glowScale, glowScale * 0.72);
+              sharedMatrix.setPosition(renderX, renderY, particle.z - 0.012);
+              layer.glowMesh.setMatrixAt(index, sharedMatrix);
+              sharedColor.lerp(palette.surface, lightTheme ? 0.1 : 0.24);
+              layer.glowMesh.setColorAt(index, sharedColor);
+            }
           });
           layer.mesh.instanceMatrix.needsUpdate = true;
           if (layer.mesh.instanceColor) layer.mesh.instanceColor.needsUpdate = true;
           const representativeDepth = (layer.depthRange[0] + layer.depthRange[1]) * 0.5;
-          layer.material.opacity = sampleAmbientDepth(representativeDepth).opacity
+          const representativeProfile = sampleAmbientDepth(representativeDepth);
+          layer.material.opacity = representativeProfile.opacity
             * (balanced ? 0.55 : 0.62) * (0.7 + currentProfile.particle * 0.3);
+          if (layer.glowMesh && layer.glowMaterial) {
+            layer.glowMesh.instanceMatrix.needsUpdate = true;
+            if (layer.glowMesh.instanceColor) layer.glowMesh.instanceColor.needsUpdate = true;
+            layer.glowMaterial.opacity = (lightTheme ? 0.028 : 0.115)
+              * representativeProfile.opacity
+              * (0.72 + currentProfile.particle * 0.28);
+          }
         });
       };
 
@@ -1607,6 +1727,10 @@ export default function AmbientWorld() {
       data-entity-visual="marine-still-life"
       data-contact-model="gentle-displacement"
       data-entity-model="fixed-drift"
+      data-glow-model="selective-additive"
+      data-glow-theme="highlight"
+      data-jelly-motion="pulse-glide"
+      data-static-overlay="fallback-only"
       data-entity-scale="small"
       data-relic-set="sea-bloom-sea-glass-coral"
       data-entity-radius-max="0"

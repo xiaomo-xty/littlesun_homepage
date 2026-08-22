@@ -10,6 +10,7 @@ import {
   pointerRepulsion,
   resolveCircleCollision,
   sampleAmbientDepth,
+  sampleJellyLuminescence,
   sampleJellyPulse,
   sampleOceanFlow,
   scheduleFixedSimulation,
@@ -80,6 +81,20 @@ describe("ambient entity rules", () => {
     expect(loopEnd.contraction).toBeLessThan(0.00001);
     expect(sampleJellyPulse(0.09).thrust).toBeCloseTo(1, 6);
     expect(sampleJellyPulse(0.4).thrust).toBe(0);
+  });
+
+  test("jelly luminescence peaks with propulsion and settles into a dim afterglow", () => {
+    const resting = sampleJellyLuminescence(0);
+    const propelling = sampleJellyLuminescence(0.09);
+    const relaxing = sampleJellyLuminescence(0.48);
+
+    expect(propelling).toBeGreaterThan(resting + 0.45);
+    expect(relaxing).toBeLessThan(propelling);
+    expect(relaxing).toBeGreaterThanOrEqual(0.18);
+    expect(Math.abs(sampleJellyLuminescence(0.9999) - resting)).toBeLessThan(0.002);
+    for (let index = -20; index <= 120; index += 1) {
+      expect(sampleJellyLuminescence(index / 100)).toBeWithin(0, 1);
+    }
   });
 
   test("pointer force always points away from the cursor", () => {
