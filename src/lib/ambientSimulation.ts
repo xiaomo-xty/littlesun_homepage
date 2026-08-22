@@ -63,6 +63,8 @@ export type FixedStepSchedule = {
 
 export const AMBIENT_FIXED_STEP = 1 / 60;
 export const AMBIENT_MAX_FIXED_STEPS = 8;
+export const AMBIENT_ENTITY_RESTITUTION = 0.28;
+export const AMBIENT_ENTITY_MAX_SPEED = 0.72;
 
 export function scheduleFixedSimulation(
   accumulator: number,
@@ -90,6 +92,17 @@ export function scheduleFixedSimulation(
     simulatedDelta: count * safeStep,
     droppedDelta: safeFrameDelta - acceptedDelta,
   };
+}
+
+export function limitSolidSpeed<T extends SolidBodyState>(body: T, maximumSpeed = AMBIENT_ENTITY_MAX_SPEED): T {
+  const safeMaximum = Math.max(0, maximumSpeed);
+  const speed = Math.hypot(body.vx, body.vy);
+  if (speed > safeMaximum && speed > 0.0001) {
+    const scale = safeMaximum / speed;
+    body.vx *= scale;
+    body.vy *= scale;
+  }
+  return body;
 }
 
 function smoothstep(value: number) {

@@ -1,8 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import {
+  AMBIENT_ENTITY_MAX_SPEED,
+  AMBIENT_ENTITY_RESTITUTION,
   advanceRibbonChain,
   canFracture,
   fracturePattern,
+  limitSolidSpeed,
   pointerRepulsion,
   resolveCircleCollision,
   sampleAmbientDepth,
@@ -97,6 +100,20 @@ describe("ambient entity rules", () => {
     expect(first.vx).toBeLessThan(0);
     expect(second.vx).toBeGreaterThan(0);
     expect(second.x - first.x).toBeCloseTo(1.2, 5);
+  });
+
+  test("ambient contacts settle with low restitution and capped travel speed", () => {
+    const first: SolidBodyState = { x: -0.4, y: 0, vx: 1, vy: 0, radius: 0.6, mass: 1, angularVelocity: 0 };
+    const second: SolidBodyState = { x: 0.4, y: 0, vx: -1, vy: 0, radius: 0.6, mass: 1, angularVelocity: 0 };
+    resolveCircleCollision(first, second, AMBIENT_ENTITY_RESTITUTION);
+    expect(first.vx).toBeCloseTo(-AMBIENT_ENTITY_RESTITUTION, 8);
+    expect(second.vx).toBeCloseTo(AMBIENT_ENTITY_RESTITUTION, 8);
+
+    second.vx = 3;
+    second.vy = 4;
+    limitSolidSpeed(second);
+    expect(Math.hypot(second.vx, second.vy)).toBeCloseTo(AMBIENT_ENTITY_MAX_SPEED, 8);
+    expect(second.vx / second.vy).toBeCloseTo(3 / 4, 8);
   });
 
   test("complex shapes fracture into simpler bounded sets", () => {
