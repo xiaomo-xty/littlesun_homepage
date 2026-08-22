@@ -4,9 +4,12 @@ import {
   AMBIENT_ENTITY_MAX_SPEED,
   AMBIENT_ENTITY_RESTITUTION,
   AMBIENT_FIXED_STEP,
+  AMBIENT_JELLY_MAX_SPEED,
   advanceRibbonChain,
   canFracture,
+  destructibleWeight,
   fracturePattern,
+  limitMotionSpeed,
   limitSolidSpeed,
   pointerRepulsion,
   resolveCircleCollision,
@@ -14,6 +17,7 @@ import {
   sampleJellyPulse,
   sampleOceanFlow,
   scheduleFixedSimulation,
+  shouldRegenerateDestructibles,
   type CollisionResult,
   type RibbonPoint,
   type SolidBodyState,
@@ -70,8 +74,13 @@ type OceanEntity = SolidBodyState & {
   depth: number;
   previousX: number;
   previousY: number;
+  restX: number;
+  restY: number;
   rotation: number;
   previousRotation: number;
+  restRotation: number;
+  age: number;
+  resources: Disposable[];
 };
 
 type MarineRelicKind = "sea-bloom" | "sea-glass" | "coral";
@@ -206,10 +215,17 @@ export default function AmbientWorld() {
     host.dataset.relicSet = "sea-bloom-sea-glass-coral";
     host.dataset.entityRadiusMax = "0";
     host.dataset.entitySpeedMax = "0";
+    host.dataset.jellySpeedMax = "0";
+    host.dataset.coralAngleDeviation = "0";
     host.dataset.simulationStep = "60hz";
     host.dataset.entityCount = "0";
+    host.dataset.entityWeight = "0";
+    host.dataset.entityWeightLow = "0";
+    host.dataset.entityWeightHigh = "0";
+    host.dataset.regeneration = "idle";
     host.dataset.organismCount = "0";
     host.dataset.fractureCount = "0";
+    host.dataset.destroyedCount = "0";
     document.documentElement.dataset.ambientBackend = "static";
 
     if (staticOnly) {
@@ -278,6 +294,7 @@ export default function AmbientWorld() {
       let targetProfile = { ...defaultProfile };
       let pulse = 0;
       let fractureCount = 0;
+      let destroyedCount = 0;
       let hasRendered = false;
       let simulationAccumulator = 0;
       let simulationTick = 0;
@@ -487,7 +504,7 @@ export default function AmbientWorld() {
       const activeEntities: OceanEntity[] = [];
       const fractureQueue: FractureRequest[] = [];
       const queuedForFracture = new Set<number>();
-      const entityLimit = balanced ? 9 : 13;
+      const entityHardLimit = balanced ? 28 : 42;
       const collisionResult: CollisionResult = { collided: false, impact: 0, nx: 0, ny: 0 };
 
       const createEntityShape = (kind: SolidKind, radius: number) => {
@@ -606,7 +623,7 @@ export default function AmbientWorld() {
           segment(-0.02, -0.1, 0.52, 0.02);
           segment(-0.04, 0.12, -0.48, 0.35);
         }
-        return register(new THREE.BufferGeometry().setFromPoints(points));
+        return new THREE.BufferGeometry().setFromPoints(points);
       };
 
       const createEntity = (
@@ -625,10 +642,13 @@ export default function AmbientWorld() {
         const edge = register(new THREE.LineBasicMaterial({ transparent: true, depthWrite: false }));
         const edges = new THREE.LineSegments(edgeGeometry, edge);
         const detail = register(new THREE.LineBasicMaterial({ transparent: true, depthWrite: false }));
-        const details = new THREE.LineSegments(createEntityDetailGeometry(kind, radius), detail);
+        const detailGeometry = register(createEntityDetailGeometry(kind, radius));
+        const details = new THREE.LineSegments(detailGeometry, detail);
         const group = new THREE.Group();
         group.add(mesh, edges, details);
         world.add(group);
+        const rotation = (random() - 0.5) * 0.34;
+        const coral = kind === "triangle";
 
         const entity: OceanEntity = {
           id: nextEntityId,
@@ -648,15 +668,19 @@ export default function AmbientWorld() {
           y,
           previousX: x,
           previousY: y,
+          restX: x,
+          restY: y,
           vx,
           vy,
           radius,
           mass: Math.max(0.22, radius * radius * (kind === "rect" ? 1.3 : 1)),
-          angularVelocity: (random() - 0.5) * 0.18,
-          rotation: (random() - 0.5) * 0.34,
-          previousRotation: 0,
+          angularVelocity: (random() - 0.5) * (coral ? 0.016 : 0.18),
+          rotation,
+          previousRotation: rotation,
+          restRotation: rotation,
+          age: 0,
+          resources: [geometry, fill, edgeGeometry, edge, detailGeometry, detail],
         };
-        entity.previousRotation = entity.rotation;
         nextEntityId += 1;
         entities.push(entity);
         return entity;
@@ -681,6 +705,17 @@ export default function AmbientWorld() {
         (maximum, entity) => Math.max(maximum, entity.radius),
         0,
       ).toFixed(3);
+      const initialEntityWeight = entities.reduce(
+        (total, entity) => total + destructibleWeight(entity.level, entity.radius),
+        0,
+      );
+      const entityWeightLow = initialEntityWeight * 0.46;
+      const entityWeightHigh = initialEntityWeight * 1.02;
+      let regenerationActive = false;
+      let nextRegenerationAt = 0;
+      host.dataset.entityWeight = initialEntityWeight.toFixed(3);
+      host.dataset.entityWeightLow = entityWeightLow.toFixed(3);
+      host.dataset.entityWeightHigh = entityWeightHigh.toFixed(3);
 
       const dolphinParts: DolphinPart[] = [];
       const createDolphinMaterial = (color: number) => register(new THREE.MeshBasicMaterial({
@@ -944,34 +979,51 @@ export default function AmbientWorld() {
 
       const queueFracture = (entity: OceanEntity, impact: number) => {
         if (!entity.alive || entity.fractureCooldown > 0 || queuedForFracture.has(entity.id)) return;
-        if (!canFracture(entity.level, impact, activeEntities.length, entityLimit)) return;
+        if (!canFracture(entity.level, impact, activeEntities.length, entityHardLimit)) return;
         queuedForFracture.add(entity.id);
         fractureQueue.push({ entity, impact });
       };
 
-      const updateEntityCount = () => {
+      const updateEntityDiagnostics = () => {
         let maximumRadius = 0;
-        const count = entities.reduce((total, entity) => {
-          if (entity.alive) maximumRadius = Math.max(maximumRadius, entity.radius);
-          return total + Number(entity.alive);
-        }, 0);
+        let weight = 0;
+        const count = entities.length;
+        entities.forEach((entity) => {
+          maximumRadius = Math.max(maximumRadius, entity.radius);
+          weight += destructibleWeight(entity.level, entity.radius);
+        });
         host.dataset.entityCount = String(count);
         host.dataset.entityRadiusMax = maximumRadius.toFixed(3);
-        return count;
+        host.dataset.entityWeight = weight.toFixed(3);
+        return { count, weight };
+      };
+
+      const removeEntity = (entity: OceanEntity) => {
+        entity.alive = false;
+        world.remove(entity.group);
+        entity.resources.forEach((resource) => {
+          resources.delete(resource);
+          resource.dispose();
+        });
+        const index = entities.indexOf(entity);
+        if (index >= 0) entities.splice(index, 1);
       };
 
       const fractureEntity = (request: FractureRequest) => {
         const parent = request.entity;
         if (!parent.alive) return;
         const pattern = fracturePattern(parent.kind, parent.level);
-        const available = entityLimit - (updateEntityCount() - 1);
-        const pieces = pattern.slice(0, Math.max(0, available));
-        if (pieces.length < 2) return;
+        const population = updateEntityDiagnostics();
+        const available = Math.max(1, entityHardLimit - (population.count - 1));
+        const pieces = pattern.slice(0, available);
 
-        parent.alive = false;
-        world.remove(parent.group);
+        removeEntity(parent);
+        if (pieces.length === 0) {
+          destroyedCount += 1;
+          host.dataset.destroyedCount = String(destroyedCount);
+        }
         pieces.forEach((piece, index) => {
-          const radius = Math.max(0.1, parent.radius * piece.radiusRatio);
+          const radius = Math.max(0.055, parent.radius * piece.radiusRatio);
           const tangent = index % 2 === 0 ? -0.05 : 0.05;
           const splitSpeed = 0.16 + request.impact * 0.08;
           const child = createEntity(
@@ -984,9 +1036,9 @@ export default function AmbientWorld() {
             parent.vy * 0.42 + piece.direction.y * splitSpeed + piece.direction.x * tangent,
           );
           limitSolidSpeed(child, AMBIENT_ENTITY_MAX_SPEED * 0.72);
-          child.angularVelocity += (index - pieces.length * 0.5) * 0.28;
+          child.angularVelocity += (index - pieces.length * 0.5) * (child.relic === "coral" ? 0.022 : 0.28);
           child.hit = 1;
-          child.fractureCooldown = 1.9;
+          child.fractureCooldown = 1.15;
           child.fill.color.copy(palette.surface);
           child.edge.color.copy(lightTheme ? palette.line : palette.accent);
           child.detail.color.copy(lightTheme ? palette.accentStrong : palette.surface);
@@ -995,7 +1047,75 @@ export default function AmbientWorld() {
         host.dataset.fractureCount = String(fractureCount);
         pulseOrigin.set(parent.x, parent.y);
         pulse = Math.max(pulse, 0.72);
-        updateEntityCount();
+        updateEntityDiagnostics();
+      };
+
+      const createRegeneratedEntity = (currentWeight: number) => {
+        const level = random() < 0.24 ? 2 : 1;
+        const remainingWeight = entityWeightHigh - currentWeight;
+        const maximumRadius = Math.sqrt(Math.max(0, remainingWeight) / (1 + level * 0.35));
+        const minimumRadius = balanced ? 0.18 : 0.2;
+        if (remainingWeight <= 0) return false;
+
+        const radius = Math.max(
+          minimumRadius,
+          Math.min(maximumRadius, minimumRadius + random() * (balanced ? 0.13 : 0.18)),
+        );
+        const edge = Math.floor(random() * 4);
+        const inset = radius * 0.8;
+        let x = (random() * 1.6 - 0.8) * viewHalfWidth;
+        let y = (random() * 1.5 - 0.75) * viewHalfHeight;
+        let vx = (random() - 0.5) * 0.035;
+        let vy = (random() - 0.5) * 0.035;
+        if (edge === 0) {
+          x = -viewHalfWidth + inset;
+          vx = 0.035 + random() * 0.035;
+        } else if (edge === 1) {
+          x = viewHalfWidth - inset;
+          vx = -0.035 - random() * 0.035;
+        } else if (edge === 2) {
+          y = -viewHalfHeight + inset;
+          vy = 0.035 + random() * 0.035;
+        } else {
+          y = viewHalfHeight - inset;
+          vy = -0.035 - random() * 0.035;
+        }
+
+        const kind = kinds[Math.floor(random() * kinds.length)];
+        const entity = createEntity(kind, level, radius, x, y, vx, vy);
+        entity.fractureCooldown = 1.4 + random() * 0.8;
+        entity.fill.color.copy(palette.surface);
+        entity.edge.color.copy(lightTheme ? palette.line : palette.accent);
+        entity.detail.color.copy(lightTheme ? palette.accentStrong : palette.surface);
+        return true;
+      };
+
+      const simulateRegeneration = (seconds: number) => {
+        let population = updateEntityDiagnostics();
+        regenerationActive = shouldRegenerateDestructibles(
+          population.weight,
+          entityWeightLow,
+          entityWeightHigh,
+          regenerationActive,
+        );
+        host.dataset.regeneration = regenerationActive ? "active" : "idle";
+        if (!regenerationActive || seconds < nextRegenerationAt || population.count >= entityHardLimit) return;
+
+        const created = createRegeneratedEntity(population.weight);
+        nextRegenerationAt = seconds + 0.58 + random() * 0.82;
+        if (!created) {
+          regenerationActive = false;
+          host.dataset.regeneration = "idle";
+          return;
+        }
+        population = updateEntityDiagnostics();
+        regenerationActive = shouldRegenerateDestructibles(
+          population.weight,
+          entityWeightLow,
+          entityWeightHigh,
+          regenerationActive,
+        );
+        host.dataset.regeneration = regenerationActive ? "active" : "idle";
       };
 
       const updateFlowRibbons = (time: number) => {
@@ -1029,13 +1149,16 @@ export default function AmbientWorld() {
         entities.forEach((entity) => {
           if (!entity.alive) return;
           activeEntities.push(entity);
+          entity.age += delta;
           entity.fractureCooldown = Math.max(0, entity.fractureCooldown - delta);
           entity.hit *= Math.exp(-4.2 * delta);
+          const coral = entity.relic === "coral";
+          const interactionScale = coral ? 0.22 : 1;
 
           if (pointer.active) {
             pointerRepulsion(entity, pointerWorld, 1.65 + entity.radius, 2.2 + pointer.speed * 4.5, repelForce);
-            entity.vx += repelForce.x * delta;
-            entity.vy += repelForce.y * delta;
+            entity.vx += repelForce.x * delta * interactionScale;
+            entity.vy += repelForce.y * delta * interactionScale;
             if (Math.abs(repelForce.x) + Math.abs(repelForce.y) > 0.16) entity.hit = Math.max(entity.hit, 0.34);
           }
 
@@ -1044,22 +1167,33 @@ export default function AmbientWorld() {
             const dy = entity.y - pulseOrigin.y;
             const distance = Math.max(0.2, Math.hypot(dx, dy));
             const strength = Math.max(0, 1 - distance / 4.6) * pulse * delta * 1.8;
-            entity.vx += dx / distance * strength;
-            entity.vy += dy / distance * strength;
+            entity.vx += dx / distance * strength * interactionScale;
+            entity.vy += dy / distance * strength * interactionScale;
           }
 
           sampleOceanFlow(entity, seconds, flowForce);
-          entity.vx += flowForce.x * delta * 0.12 * currentProfile.flow;
-          entity.vy += flowForce.y * delta * 0.12 * currentProfile.flow;
+          const flowScale = coral ? 0.18 : 1;
+          entity.vx += flowForce.x * delta * 0.12 * currentProfile.flow * flowScale;
+          entity.vy += flowForce.y * delta * 0.12 * currentProfile.flow * flowScale;
           zoneForce.set(0, 0);
           addSafeZoneForce(entity.x, entity.y, zoneForce, 0.66);
-          entity.vx += zoneForce.x * delta;
-          entity.vy += zoneForce.y * delta;
+          entity.vx += zoneForce.x * delta * interactionScale;
+          entity.vy += zoneForce.y * delta * interactionScale;
 
-          entity.vx *= Math.exp(-1.05 * delta);
-          entity.vy *= Math.exp(-1.05 * delta);
-          entity.angularVelocity *= Math.exp(-0.68 * delta);
-          limitSolidSpeed(entity);
+          if (coral) {
+            entity.vx += (entity.restX - entity.x) * delta * 0.82;
+            entity.vy += (entity.restY - entity.y) * delta * 0.82;
+            const rotationError = Math.atan2(
+              Math.sin(entity.restRotation - entity.rotation),
+              Math.cos(entity.restRotation - entity.rotation),
+            );
+            entity.angularVelocity += rotationError * delta * 6.2;
+          }
+
+          entity.vx *= Math.exp(-(coral ? 2.35 : 1.05) * delta);
+          entity.vy *= Math.exp(-(coral ? 2.35 : 1.05) * delta);
+          entity.angularVelocity *= Math.exp(-(coral ? 5.8 : 0.68) * delta);
+          limitSolidSpeed(entity, coral ? 0.18 : AMBIENT_ENTITY_MAX_SPEED);
           entity.x += entity.vx * delta * currentProfile.entity;
           entity.y += entity.vy * delta * currentProfile.entity;
           entity.rotation += entity.angularVelocity * delta;
@@ -1069,11 +1203,13 @@ export default function AmbientWorld() {
           if (entity.x < -boundaryX || entity.x > boundaryX) {
             entity.x = Math.max(-boundaryX, Math.min(boundaryX, entity.x));
             entity.vx *= -0.34;
+            if (coral) entity.restX = entity.x;
             entity.hit = Math.max(entity.hit, 0.48);
           }
           if (entity.y < -boundaryY || entity.y > boundaryY) {
             entity.y = Math.max(-boundaryY, Math.min(boundaryY, entity.y));
             entity.vy *= -0.34;
+            if (coral) entity.restY = entity.y;
             entity.hit = Math.max(entity.hit, 0.48);
           }
 
@@ -1083,13 +1219,21 @@ export default function AmbientWorld() {
           for (let secondIndex = firstIndex + 1; secondIndex < activeEntities.length; secondIndex += 1) {
             const first = activeEntities[firstIndex];
             const second = activeEntities[secondIndex];
+            const firstAngularVelocity = first.angularVelocity;
+            const secondAngularVelocity = second.angularVelocity;
             const result = resolveCircleCollision(first, second, AMBIENT_ENTITY_RESTITUTION, collisionResult);
             if (!result.collided) continue;
+            if (first.relic === "coral") {
+              first.angularVelocity = firstAngularVelocity + (first.angularVelocity - firstAngularVelocity) * 0.08;
+            }
+            if (second.relic === "coral") {
+              second.angularVelocity = secondAngularVelocity + (second.angularVelocity - secondAngularVelocity) * 0.08;
+            }
             const response = Math.min(1, 0.22 + result.impact * 0.52);
             first.hit = Math.max(first.hit, response);
             second.hit = Math.max(second.hit, response);
-            first.angularVelocity -= result.ny * result.impact * 0.13;
-            second.angularVelocity += result.nx * result.impact * 0.13;
+            first.angularVelocity -= result.ny * result.impact * 0.13 * (first.relic === "coral" ? 0.08 : 1);
+            second.angularVelocity += result.nx * result.impact * 0.13 * (second.relic === "coral" ? 0.08 : 1);
             if (result.impact >= 0.82) queueFracture(first.level >= second.level ? first : second, result.impact);
           }
         }
@@ -1100,22 +1244,25 @@ export default function AmbientWorld() {
         entities.forEach((entity) => {
           if (!entity.alive) return;
           const breathe = 1 + Math.sin(seconds * 0.42 + entity.phase) * 0.022 + entity.hit * 0.06;
+          const coralSway = entity.relic === "coral" ? Math.sin(seconds * 0.52 + entity.phase) * 0.012 : 0;
+          const birthVisibility = Math.min(1, entity.age / 0.9);
           entity.group.position.set(
             lerp(entity.previousX, entity.x, alpha),
             lerp(entity.previousY, entity.y, alpha),
             entity.depth,
           );
-          entity.group.rotation.z = lerpAngle(entity.previousRotation, entity.rotation, alpha);
+          entity.group.rotation.z = lerpAngle(entity.previousRotation, entity.rotation, alpha) + coralSway;
           entity.group.scale.setScalar(breathe);
           entity.fill.color.copy(palette.surface).lerp(palette.accent, entity.hit * 0.32);
           entity.edge.color.copy(lightTheme ? palette.line : palette.accent).lerp(palette.accentStrong, entity.hit * 0.56);
           entity.detail.color.copy(lightTheme ? palette.accentStrong : palette.surface).lerp(palette.accent, entity.hit * 0.34);
           const bloom = entity.relic === "sea-bloom";
-          entity.fill.opacity = (bloom ? (lightTheme ? 0.045 : 0.025) : (lightTheme ? 0.24 : 0.12)) + entity.hit * 0.045;
+          entity.fill.opacity = ((bloom ? (lightTheme ? 0.045 : 0.025) : (lightTheme ? 0.24 : 0.12)) + entity.hit * 0.045)
+            * birthVisibility;
           entity.edge.opacity = (bloom ? (lightTheme ? 0.32 : 0.2) : (lightTheme ? 0.78 : 0.46))
-            * currentProfile.entity + entity.hit * 0.1;
+            * (currentProfile.entity + entity.hit * 0.1) * birthVisibility;
           entity.detail.opacity = (bloom ? (lightTheme ? 0.72 : 0.46) : (lightTheme ? 0.6 : 0.34))
-            * currentProfile.entity + entity.hit * 0.08;
+            * (currentProfile.entity + entity.hit * 0.08) * birthVisibility;
         });
       };
 
@@ -1140,7 +1287,13 @@ export default function AmbientWorld() {
           jelly.vy += Math.sin(jelly.heading) * thrust * delta;
 
           if (pointer.active) {
-            pointerRepulsion(jelly, pointerWorld, balanced ? 1.55 : 1.8, 3.4 + pointer.speed * 7, repelForce);
+            pointerRepulsion(
+              jelly,
+              pointerWorld,
+              balanced ? 0.95 : 1.08,
+              0.12 + Math.min(pointer.speed, 1.1) * 0.38,
+              repelForce,
+            );
             jelly.vx += repelForce.x * delta;
             jelly.vy += repelForce.y * delta;
           }
@@ -1148,8 +1301,9 @@ export default function AmbientWorld() {
           addSafeZoneForce(jelly.x, jelly.y, zoneForce, 0.9);
           jelly.vx += zoneForce.x * delta;
           jelly.vy += zoneForce.y * delta;
-          jelly.vx *= Math.exp(-0.54 * delta);
-          jelly.vy *= Math.exp(-0.54 * delta);
+          jelly.vx *= Math.exp(-1.72 * delta);
+          jelly.vy *= Math.exp(-1.72 * delta);
+          limitMotionSpeed(jelly, AMBIENT_JELLY_MAX_SPEED);
           jelly.x += jelly.vx * delta;
           jelly.y += jelly.vy * delta;
 
@@ -1302,8 +1456,8 @@ export default function AmbientWorld() {
           const targetVelocityY = ny * pushSpeed + dolphinForward.y * 0.1;
           entity.vx = lerp(entity.vx, targetVelocityX, contactBlend);
           entity.vy = lerp(entity.vy, targetVelocityY, contactBlend);
-          limitSolidSpeed(entity);
-          entity.angularVelocity += (nx - ny) * 0.16;
+          limitSolidSpeed(entity, entity.relic === "coral" ? 0.18 : AMBIENT_ENTITY_MAX_SPEED);
+          entity.angularVelocity += (nx - ny) * 0.16 * (entity.relic === "coral" ? 0.08 : 1);
           entity.hit = 1;
           dolphinRepulsion.vx -= nx * 0.04;
           dolphinRepulsion.vy -= ny * 0.04;
@@ -1466,6 +1620,7 @@ export default function AmbientWorld() {
         simulateEntities(simulationClock, delta);
         interactDolphinWithEntities();
         fractureQueue.forEach(fractureEntity);
+        simulateRegeneration(simulationClock);
       };
 
       const render = (time: number) => {
@@ -1488,6 +1643,18 @@ export default function AmbientWorld() {
           (maximum, entity) => entity.alive ? Math.max(maximum, Math.hypot(entity.vx, entity.vy)) : maximum,
           0,
         ).toFixed(3);
+        host.dataset.jellySpeedMax = jellies.reduce(
+          (maximum, jelly) => Math.max(maximum, Math.hypot(jelly.vx, jelly.vy)),
+          0,
+        ).toFixed(3);
+        host.dataset.coralAngleDeviation = entities.reduce((maximum, entity) => {
+          if (entity.relic !== "coral") return maximum;
+          const deviation = Math.abs(Math.atan2(
+            Math.sin(entity.rotation - entity.restRotation),
+            Math.cos(entity.rotation - entity.restRotation),
+          ));
+          return Math.max(maximum, deviation);
+        }, 0).toFixed(3);
         if (schedule.droppedDelta > 0) {
           host.dataset.droppedTimeMs = schedule.droppedDelta.toFixed(3);
         }
@@ -1618,10 +1785,17 @@ export default function AmbientWorld() {
       data-relic-set="sea-bloom-sea-glass-coral"
       data-entity-radius-max="0"
       data-entity-speed-max="0"
+      data-jelly-speed-max="0"
+      data-coral-angle-deviation="0"
       data-simulation-step="60hz"
       data-entity-count="0"
+      data-entity-weight="0"
+      data-entity-weight-low="0"
+      data-entity-weight-high="0"
+      data-regeneration="idle"
       data-organism-count="0"
       data-fracture-count="0"
+      data-destroyed-count="0"
       aria-hidden="true"
     >
       <canvas />

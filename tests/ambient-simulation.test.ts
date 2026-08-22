@@ -2,9 +2,12 @@ import { describe, expect, test } from "bun:test";
 import {
   AMBIENT_ENTITY_MAX_SPEED,
   AMBIENT_ENTITY_RESTITUTION,
+  AMBIENT_JELLY_MAX_SPEED,
   advanceRibbonChain,
   canFracture,
+  destructibleWeight,
   fracturePattern,
+  limitMotionSpeed,
   limitSolidSpeed,
   pointerRepulsion,
   resolveCircleCollision,
@@ -13,6 +16,7 @@ import {
   sampleOceanFlow,
   scheduleFixedSimulation,
   schoolingSteer,
+  shouldRegenerateDestructibles,
   type SolidBodyState,
 } from "../src/lib/ambientSimulation";
 
@@ -116,6 +120,13 @@ describe("ambient entity rules", () => {
     expect(second.vx / second.vy).toBeCloseTo(3 / 4, 8);
   });
 
+  test("jelly motion uses a separate gentle speed cap", () => {
+    const jelly = { vx: 3, vy: 4 };
+    limitMotionSpeed(jelly, AMBIENT_JELLY_MAX_SPEED);
+    expect(Math.hypot(jelly.vx, jelly.vy)).toBeCloseTo(AMBIENT_JELLY_MAX_SPEED, 8);
+    expect(jelly.vx / jelly.vy).toBeCloseTo(3 / 4, 8);
+  });
+
   test("complex shapes fracture into simpler bounded sets", () => {
     const circle = fracturePattern("circle", 2);
     const rectangle = fracturePattern("rect", 2);
@@ -127,11 +138,31 @@ describe("ambient entity rules", () => {
     expect(triangle.every((piece) => piece.level === 0)).toBe(true);
   });
 
-  test("fracturing respects impact, complexity and entity limits", () => {
+  test("fracturing respects impact and the hard entity limit", () => {
     expect(canFracture(2, 1.1, 6, 14)).toBe(true);
-    expect(canFracture(0, 1.1, 6, 14)).toBe(false);
+    expect(canFracture(0, 1.1, 6, 14)).toBe(true);
     expect(canFracture(2, 0.4, 6, 14)).toBe(false);
-    expect(canFracture(2, 1.1, 14, 14)).toBe(false);
+    expect(canFracture(2, 1.1, 14, 14)).toBe(true);
+    expect(canFracture(2, 1.1, 15, 14)).toBe(false);
+    expect(canFracture(-1, 1.1, 6, 14)).toBe(false);
+  });
+
+  test("fracture weight falls as an object becomes smaller and simpler", () => {
+    const parent = destructibleWeight(2, 0.5);
+    const firstGeneration = fracturePattern("circle", 2).reduce(
+      (total, piece) => total + destructibleWeight(piece.level, 0.5 * piece.radiusRatio),
+      0,
+    );
+    expect(firstGeneration).toBeLessThan(parent);
+    expect(destructibleWeight(0, 0.2)).toBeLessThan(destructibleWeight(1, 0.2));
+    expect(destructibleWeight(2, -1)).toBe(0);
+  });
+
+  test("weighted regeneration uses hysteresis between lower and upper thresholds", () => {
+    expect(shouldRegenerateDestructibles(0.39, 0.4, 0.9, false)).toBe(true);
+    expect(shouldRegenerateDestructibles(0.65, 0.4, 0.9, true)).toBe(true);
+    expect(shouldRegenerateDestructibles(0.65, 0.4, 0.9, false)).toBe(false);
+    expect(shouldRegenerateDestructibles(0.9, 0.4, 0.9, true)).toBe(false);
   });
 
   test("ocean flow is smooth and bounded", () => {
