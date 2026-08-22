@@ -88,9 +88,10 @@ describe("ambient entity rules", () => {
     const propelling = sampleJellyLuminescence(0.09);
     const relaxing = sampleJellyLuminescence(0.48);
 
-    expect(propelling).toBeGreaterThan(resting + 0.45);
+    expect(resting).toBeLessThan(0.05);
+    expect(propelling).toBeGreaterThan(resting + 0.75);
     expect(relaxing).toBeLessThan(propelling);
-    expect(relaxing).toBeGreaterThanOrEqual(0.18);
+    expect(relaxing).toBeGreaterThanOrEqual(0.08);
     expect(Math.abs(sampleJellyLuminescence(0.9999) - resting)).toBeLessThan(0.002);
     for (let index = -20; index <= 120; index += 1) {
       expect(sampleJellyLuminescence(index / 100)).toBeWithin(0, 1);

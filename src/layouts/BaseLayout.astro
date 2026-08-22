@@ -2,6 +2,7 @@
 import "../styles/global.css";
 import { site } from "../data/site";
 import AmbientWorld from "../components/AmbientWorld";
+import ExperienceGate from "../components/ExperienceGate.astro";
 import SectionTransitions from "../components/SectionTransitions.astro";
 
 type Props = {
@@ -33,6 +34,7 @@ const canonical = new URL(Astro.url.pathname, Astro.site);
     <title>{pageTitle}</title>
     <script is:inline>
       (() => {
+        document.documentElement.dataset.experience = "loading";
         const stored = localStorage.getItem("homepage-theme");
         const preferred = window.matchMedia("(prefers-color-scheme: dark)").matches
           ? "dark"
@@ -44,8 +46,11 @@ const canonical = new URL(Astro.url.pathname, Astro.site);
   </head>
   <body>
     <AmbientWorld client:load />
-    <a class="skip-link" href="#main-content">跳到主要内容</a>
-    <slot />
+    <div class="site-content" data-site-content>
+      <a class="skip-link" href="#main-content">跳到主要内容</a>
+      <slot />
+    </div>
+    <ExperienceGate />
     <SectionTransitions />
   </body>
 </html>
