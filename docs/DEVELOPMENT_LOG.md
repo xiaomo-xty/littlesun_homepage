@@ -943,3 +943,31 @@
 阻塞与证据：
 
 - 未修改姓名、人像、简历、邮箱、ICP、许可证或项目内容；`D:\project\blog` 未修改。
+
+## 2026-08-22 / v0.8 Narrative Section Motion
+
+今天完成：
+
+- 从 `develop` 创建 `feature/v0.8-narrative-section-motion`，以定向动效增强为边界，不调整信息架构、背景模拟或内容事实。
+- 将静态文章列表改为独立 React 交互岛，三篇文章按交替方向重复进退场，并用 Motion value 与弹簧实现低幅度指针倾斜。
+- 为文章增加原生按钮摘要开合、`aria-expanded`、`aria-controls` 和未来真实文章链接分支；占位文章不会伪装成可访问链接。
+- 扩展原 `IntersectionObserver`，让关于、生活和联系区的子元素按顺序重播，并保留 `homepage:section-presence` 事件。
+- 关于区使用标题落位、叙事段落错峰、轴线生长和节点弹入；生活区使用照片扇入与轻微 hover；联系区使用标题、命令和链接的短序列。
+- 修复观察器提前写入 React 文章树导致的 hydration mismatch，让文章区完全由 Motion 管理，Astro 区块继续由观察器管理。
+- 为 390 x 844 文章轨道增加水平裁切缓冲，将摘要触摸目标提高到 44 px，并补齐 `prefers-reduced-motion` 下的 hover 位移禁用。
+
+当前现象：
+
+- 桌面 WebGPU 深浅主题中，文章离开视口后行透明度回到 0，返回文章区后重新进入；关于区实测完成 `visible / hidden / visible` 状态循环。
+- 文章摘要按钮会同步更新展开状态和真实占位说明，指针 hover 会产生低幅度三维变换，静态文章不制造虚假跳转。
+- 390 x 844 WebGPU 中标题无裁切、按钮高度 44 px、文档横向溢出为 0；生活照片轨道保持独立横向滚动。
+- WebGPU、WebGL2 与 static 的干净浏览器会话均保留 3 篇文章，控制台无 warning 或 error。
+
+下一步最小动作：
+
+- 完成最终命令门禁，提交功能分支并以 `--no-ff` 合回 `develop`；不合入 `main`。
+
+阻塞与证据：
+
+- 当前浏览器验收接口不能模拟 `prefers-reduced-motion` 媒体特性，低动态路径通过 Motion hook、CSS 媒体覆盖和静态代码审计确认。
+- 姓名、人像、简历、邮箱、文章配图与真实文章链接仍为明确占位；`D:\project\blog` 未修改。
