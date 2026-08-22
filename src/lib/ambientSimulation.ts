@@ -204,7 +204,7 @@ export function sampleJellyLuminescence(phase: number) {
   const riseProgress = Math.max(0, Math.min(1, (wrapped - 0.035) / 0.09));
   const smoothRise = riseProgress * riseProgress * (3 - 2 * riseProgress);
   const afterglow = smoothRise * Math.exp(-Math.max(0, wrapped - 0.14) * 5.2);
-  return Math.max(0, Math.min(1, 0.18 + pulse.thrust * 0.58 + pulse.contraction * 0.12 + afterglow * 0.12));
+  return Math.max(0, Math.min(1, 0.035 + pulse.thrust * 0.78 + pulse.contraction * 0.08 + afterglow * 0.14));
 }
 
 export function pointerRepulsion(

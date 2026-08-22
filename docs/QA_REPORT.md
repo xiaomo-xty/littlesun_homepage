@@ -590,3 +590,39 @@ v0.7 满足海洋静物、双主题眼睛修正、固定时间步、WebGPU 优�
 - `git diff --check`：通过。
 - 浏览器各后端控制台均无 warning 或 error。
 - 未修改 `D:\project\blog`。
+
+## 2026-08-23 / v0.11 背景揭示与生物色差验收
+
+### 首次进入状态机
+
+- 首次打开时根节点为 `data-experience="loading"`，加载门可见、正文透明且带 `inert`。
+- 背景首帧完成后写入 `data-ambient-ready="true"` 并进入 `ambient`；正文保持隐藏，画布向完整亮度过渡，后处理目标不透明度为 0。
+- 随后进入 `entering`，正文从下方缓入，画布和后处理同步回到阅读态；最终为 `ready` 且正文移除 `inert`。
+- WebGPU、WebGL2 与 static 均完成同一状态序列；WebGL2 初始化较慢时加载门不会提前放行正文。
+
+### 生物反馈与颜色
+
+- `data-jelly-propulsion="pulse-recoil"` 生效，水母最大诊断速度实测约 `0.17` 后衰减，低于 `0.24` 独立上限。
+- 发光采样测试验证静息值低于 `0.05`，推进值高于静息值 `0.75` 以上，舒张阶段保留低幅余辉。
+- 水母使用双层 additive halo，推进阶段同步提高钟形体、轮廓和触手亮度。
+- 水母与静物色相偏移保持在蓝青色系的小范围内；珊瑚不参与 additive glow。
+
+### 浏览器矩阵
+
+| 场景 | 结果 |
+| --- | --- |
+| 1280 x 720 / WebGPU / 深色 | `webgpu / full / ready`，加载序列、阅读层级与辉光正常 |
+| 1280 x 720 / WebGPU / 浅色 | 浅色弱高光、局部阅读柔化与正文对比正常 |
+| 390 x 844 / WebGPU / 深浅主题 | Hero 无裁切，无实际横向滚动，正文和人像占位清楚 |
+| 1280 x 720 / WebGL2 | `webgl2 / balanced / ready`，动态画布完成后 static fallback 为 0 |
+| 1280 x 720 / static | `static / static / ready`，静态背景完成揭示并回到阅读态 |
+
+### 自动化与质量门禁
+
+- `bun test`：33 passed、0 failed。
+- `bun run check`：0 errors、0 warnings、0 hints。
+- `bun run build`：2 个静态路由构建成功。
+- `git diff --check`：通过。
+- 浏览器各后端控制台无 warning 或 error。
+- `prefers-reduced-motion` 通过 static 选择逻辑、CSS 媒体覆盖和代码审计确认。
+- 未修改 `D:\project\blog`。

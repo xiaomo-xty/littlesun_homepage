@@ -73,6 +73,7 @@ type OceanEntity = SolidBodyState & {
   previousRotation: number;
   restRotation: number;
   age: number;
+  colorShift: number;
 };
 
 type MarineRelicKind = "sea-bloom" | "sea-glass" | "coral";
@@ -129,6 +130,10 @@ type AmbientJelly = Vector2Like & {
   fill: THREE.MeshBasicMaterial;
   edge: THREE.LineBasicMaterial;
   glow: THREE.MeshBasicMaterial;
+  outerGlow: THREE.MeshBasicMaterial;
+  halo: THREE.Mesh;
+  outerHalo: THREE.Mesh;
+  colorShift: number;
   tentacles: JellyTentacle[];
 };
 
@@ -200,6 +205,15 @@ export default function AmbientWorld() {
     const requestedBackend = new URLSearchParams(window.location.search).get("ambient");
     const staticOnly = requestedBackend === "static" || reduceMotion.matches || saveData;
 
+    const signalAmbientReady = () => {
+      if (host.dataset.status === "ready") return;
+      host.dataset.status = "ready";
+      document.documentElement.dataset.ambientReady = "true";
+      window.dispatchEvent(new CustomEvent("homepage:ambient-ready", {
+        detail: { backend: host.dataset.backend || "static" },
+      }));
+    };
+
     host.dataset.backend = "static";
     host.dataset.quality = "static";
     host.dataset.creature = "same-side-dolphin";
@@ -209,6 +223,7 @@ export default function AmbientWorld() {
     host.dataset.entityModel = "fixed-drift";
     host.dataset.glowModel = "selective-additive";
     host.dataset.jellyMotion = "pulse-glide";
+    host.dataset.jellyPropulsion = "pulse-recoil";
     host.dataset.staticOverlay = "fallback-only";
     host.dataset.entityScale = "small";
     host.dataset.relicSet = "sea-bloom-sea-glass-coral";
@@ -222,7 +237,7 @@ export default function AmbientWorld() {
     document.documentElement.dataset.ambientBackend = "static";
 
     if (staticOnly) {
-      host.dataset.status = "ready";
+      signalAmbientReady();
       return;
     }
 
@@ -254,7 +269,7 @@ export default function AmbientWorld() {
         await renderer.init();
       } catch {
         renderer.dispose();
-        if (!destroyed) host.dataset.status = "ready";
+        if (!destroyed) signalAmbientReady();
         return;
       }
 
@@ -460,16 +475,27 @@ export default function AmbientWorld() {
           blending: THREE.AdditiveBlending,
           toneMapped: false,
         }));
+        const outerGlow = register(new THREE.MeshBasicMaterial({
+          transparent: true,
+          side: THREE.DoubleSide,
+          depthTest: false,
+          depthWrite: false,
+          blending: THREE.AdditiveBlending,
+          toneMapped: false,
+        }));
+        const outerHalo = new THREE.Mesh(jellyGeometry, outerGlow);
         const halo = new THREE.Mesh(jellyGeometry, glow);
         const bell = new THREE.Mesh(jellyGeometry, fill);
         const outline = new THREE.LineSegments(jellyEdgeGeometry, edge);
         const group = new THREE.Group();
         const renderOrder = 52 + Math.round(depth * 30);
+        outerHalo.renderOrder = renderOrder - 2;
+        outerHalo.scale.set(1.42, 1.34, 1);
         halo.renderOrder = renderOrder - 1;
-        halo.scale.set(1.2, 1.14, 1);
+        halo.scale.set(1.17, 1.12, 1);
         bell.renderOrder = renderOrder;
         outline.renderOrder = renderOrder + 1;
-        group.add(halo, bell, outline);
+        group.add(outerHalo, halo, bell, outline);
         group.position.set(x, y, -3.2 + depth * 2.4);
         group.frustumCulled = false;
         world.add(group);
@@ -521,6 +547,10 @@ export default function AmbientWorld() {
           fill,
           edge,
           glow,
+          outerGlow,
+          halo,
+          outerHalo,
+          colorShift: random() * 2 - 1,
           tentacles,
         });
       };
@@ -717,6 +747,7 @@ export default function AmbientWorld() {
           previousRotation: rotation,
           restRotation: rotation,
           age: 0,
+          colorShift: random() * 2 - 1,
         };
         entities.push(entity);
         return entity;
@@ -951,17 +982,30 @@ export default function AmbientWorld() {
         dolphinOutlineMaterial.opacity = lightTheme ? 0.78 : 0.72;
         dolphinMouthMaterial.opacity = lightTheme ? 0.68 : 0.62;
         jellies.forEach((jelly) => {
-          jelly.fill.color.copy(lightTheme ? palette.surface : palette.accent);
-          jelly.edge.color.copy(lightTheme ? palette.accentStrong : palette.surface);
-          jelly.glow.color.copy(lightTheme ? palette.accentStrong : palette.accent);
-          jelly.tentacles.forEach((tentacle) => tentacle.material.color.copy(palette.accent));
+          const hue = jelly.colorShift * 0.016;
+          const lightness = jelly.colorShift * 0.022;
+          jelly.fill.color.copy(lightTheme ? palette.surface : palette.accent)
+            .offsetHSL(hue, -0.012, lightness);
+          jelly.edge.color.copy(lightTheme ? palette.accentStrong : palette.surface)
+            .offsetHSL(hue, -0.01, lightness * 0.72);
+          jelly.glow.color.copy(lightTheme ? palette.accentStrong : palette.accent)
+            .offsetHSL(hue, -0.008, Math.max(0, lightness));
+          jelly.outerGlow.color.copy(jelly.glow.color);
+          jelly.tentacles.forEach((tentacle) => {
+            tentacle.material.color.copy(palette.accent).offsetHSL(hue, -0.012, lightness * 0.54);
+          });
         });
         flowRibbons.forEach((ribbon) => ribbon.material.color.copy(lightTheme ? palette.line : palette.accent));
         entities.forEach((entity) => {
-          entity.fill.color.copy(palette.surface);
-          entity.edge.color.copy(lightTheme ? palette.line : palette.accent);
-          entity.detail.color.copy(lightTheme ? palette.accentStrong : palette.surface);
-          entity.glow?.color.copy(lightTheme ? palette.accentStrong : palette.accent);
+          const hue = entity.colorShift * 0.014;
+          const lightness = entity.colorShift * 0.02;
+          entity.fill.color.copy(palette.surface).offsetHSL(hue, -0.016, lightness);
+          entity.edge.color.copy(lightTheme ? palette.line : palette.accent)
+            .offsetHSL(hue, -0.012, lightness * 0.7);
+          entity.detail.color.copy(lightTheme ? palette.accentStrong : palette.surface)
+            .offsetHSL(hue, -0.01, lightness * 0.65);
+          entity.glow?.color.copy(lightTheme ? palette.accentStrong : palette.accent)
+            .offsetHSL(hue, -0.01, Math.max(0, lightness));
         });
       };
 
@@ -1165,9 +1209,19 @@ export default function AmbientWorld() {
           );
           entity.group.rotation.z = lerpAngle(entity.previousRotation, entity.rotation, alpha) + coralSway;
           entity.group.scale.setScalar(breathe);
-          entity.fill.color.copy(palette.surface).lerp(palette.accent, entity.hit * 0.32);
-          entity.edge.color.copy(lightTheme ? palette.line : palette.accent).lerp(palette.accentStrong, entity.hit * 0.56);
-          entity.detail.color.copy(lightTheme ? palette.accentStrong : palette.surface).lerp(palette.accent, entity.hit * 0.34);
+          const hue = entity.colorShift * 0.014;
+          const lightness = entity.colorShift * 0.02;
+          const coralTint = entity.relic === "coral" ? 0.1 + (entity.colorShift + 1) * 0.035 : 0;
+          entity.fill.color.copy(palette.surface)
+            .lerp(palette.accentStrong, coralTint)
+            .offsetHSL(hue, -0.016, lightness)
+            .lerp(palette.accent, entity.hit * 0.32);
+          entity.edge.color.copy(lightTheme ? palette.line : palette.accent)
+            .offsetHSL(hue, -0.012, lightness * 0.7)
+            .lerp(palette.accentStrong, entity.hit * 0.56);
+          entity.detail.color.copy(lightTheme ? palette.accentStrong : palette.surface)
+            .offsetHSL(hue, -0.01, lightness * 0.65)
+            .lerp(palette.accent, entity.hit * 0.34);
           const bloom = entity.relic === "sea-bloom";
           entity.fill.opacity = ((bloom ? (lightTheme ? 0.045 : 0.025) : (lightTheme ? 0.24 : 0.12)) + entity.hit * 0.045)
             * birthVisibility;
@@ -1178,6 +1232,9 @@ export default function AmbientWorld() {
           if (entity.glow) {
             const shimmer = 0.5 + Math.sin(seconds * 0.74 + entity.phase) * 0.5;
             const glowBase = bloom ? 0.12 : 0.072;
+            entity.glow.color.copy(lightTheme ? palette.accentStrong : palette.accent)
+              .offsetHSL(hue, -0.01, Math.max(0, lightness))
+              .multiplyScalar(lightTheme ? 1 : 0.92 + shimmer * 0.48);
             entity.glow.opacity = (lightTheme ? 0.018 : glowBase)
               * (0.58 + shimmer * 0.42)
               * (currentProfile.entity + entity.hit * 0.12)
@@ -1203,7 +1260,7 @@ export default function AmbientWorld() {
           jelly.heading += headingDelta * Math.min(1, delta * (0.68 + pulseSample.thrust * 0.72));
           jelly.vx += flowForce.x * delta * 0.07 * currentProfile.flow;
           jelly.vy += (flowForce.y * 0.052 * currentProfile.flow + 0.012) * delta;
-          const thrust = pulseSample.thrust * jelly.pulseStrength
+          const thrust = pulseSample.thrust * jelly.pulseStrength * 3.05
             * (0.76 + jelly.depth * 0.24) * currentProfile.jelly;
           jelly.vx += Math.cos(jelly.heading) * thrust * delta;
           jelly.vy += Math.sin(jelly.heading) * thrust * delta;
@@ -1295,9 +1352,33 @@ export default function AmbientWorld() {
             1,
           );
           const visibility = (0.72 + jelly.depth * 0.28) * currentProfile.jelly;
-          jelly.fill.opacity = (lightTheme ? 0.3 : 0.22 + luminescence * 0.035) * visibility;
-          jelly.edge.opacity = (lightTheme ? 0.64 : 0.48 + luminescence * 0.12) * visibility;
-          jelly.glow.opacity = (lightTheme ? 0.028 : 0.09 + luminescence * 0.15) * visibility;
+          const hue = jelly.colorShift * 0.016;
+          const lightness = jelly.colorShift * 0.022;
+          const glowColorScale = lightTheme ? 1 : 0.78 + luminescence * 0.82;
+          jelly.fill.color.copy(lightTheme ? palette.surface : palette.accent)
+            .offsetHSL(hue, -0.012, lightness)
+            .lerp(lightTheme ? palette.accent : palette.surface, luminescence * (lightTheme ? 0.035 : 0.16));
+          jelly.edge.color.copy(lightTheme ? palette.accentStrong : palette.surface)
+            .offsetHSL(hue, -0.01, lightness * 0.72)
+            .lerp(palette.surface, luminescence * (lightTheme ? 0.04 : 0.2));
+          jelly.glow.color.copy(lightTheme ? palette.accentStrong : palette.accent)
+            .offsetHSL(hue, -0.008, Math.max(0, lightness))
+            .multiplyScalar(glowColorScale);
+          jelly.outerGlow.color.copy(jelly.glow.color).multiplyScalar(lightTheme ? 0.92 : 1.12);
+          jelly.fill.opacity = (lightTheme ? 0.27 + luminescence * 0.035 : 0.17 + luminescence * 0.12) * visibility;
+          jelly.edge.opacity = (lightTheme ? 0.56 + luminescence * 0.1 : 0.34 + luminescence * 0.32) * visibility;
+          jelly.glow.opacity = (lightTheme ? 0.005 + luminescence * 0.055 : 0.01 + luminescence * 0.34) * visibility;
+          jelly.outerGlow.opacity = (lightTheme ? 0.001 + luminescence * 0.018 : 0.002 + luminescence * 0.16) * visibility;
+          jelly.halo.scale.set(
+            1.15 + luminescence * 0.08,
+            1.1 + luminescence * 0.06,
+            1,
+          );
+          jelly.outerHalo.scale.set(
+            1.36 + luminescence * 0.16,
+            1.29 + luminescence * 0.13,
+            1,
+          );
 
           jelly.tentacles.forEach((tentacle, tentacleIndex) => {
             tentacle.points.forEach((point, pointIndex) => {
@@ -1311,7 +1392,7 @@ export default function AmbientWorld() {
               tentacle.positions[offset + 2] = -0.02;
             });
             tentacle.attribute.needsUpdate = true;
-            tentacle.material.opacity = (lightTheme ? 0.34 : 0.34 + luminescence * 0.16) * visibility;
+            tentacle.material.opacity = (lightTheme ? 0.3 + luminescence * 0.06 : 0.24 + luminescence * 0.3) * visibility;
           });
         });
       };
@@ -1610,7 +1691,7 @@ export default function AmbientWorld() {
         renderParticles(renderSeconds, schedule.alpha);
         renderer.render(scene, camera);
         if (!hasRendered) {
-          host.dataset.status = "ready";
+          signalAmbientReady();
           hasRendered = true;
         }
         frame = window.requestAnimationFrame(render);
@@ -1730,6 +1811,7 @@ export default function AmbientWorld() {
       data-glow-model="selective-additive"
       data-glow-theme="highlight"
       data-jelly-motion="pulse-glide"
+      data-jelly-propulsion="pulse-recoil"
       data-static-overlay="fallback-only"
       data-entity-scale="small"
       data-relic-set="sea-bloom-sea-glass-coral"
