@@ -242,14 +242,8 @@ section[id] {
 }
 
 .reveal-ready [data-motion-kind="contact-copy"],
-.reveal-ready [data-motion-kind="contact-links"],
 .reveal-ready [data-motion-kind="contact-footer"] {
   transform: translate3d(0, 22px, 0);
-}
-
-.reveal-ready [data-motion-kind="contact-command"] {
-  transform: translate3d(0, 18px, 0) scale(0.92) rotate(-1.2deg);
-  transform-origin: left center;
 }
 
 .reveal-ready [data-motion-kind^="contact-"][data-motion-state="visible"] {
