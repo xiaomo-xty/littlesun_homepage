@@ -124,6 +124,12 @@
 - 开场全程滚动锁定、正文 `inert` 与临时样式清理已完成
 - WebGPU、WebGL2、static、深浅主题、桌面、移动端与 `#contact` 深链接回归已完成
 
+### v0.16 Reveal Preroll Guard
+
+- 牵引水母与海流前沿的 CSS 初始姿态已和首个 Web Animations 关键帧对齐
+- 编舞激活到 `arrival` 开始之间的首帧防闪已完成
+- 普通首屏与深链接刷新回归已完成
+
 ## 非目标
 
 - 不修改 `D:\project\blog`

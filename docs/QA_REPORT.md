@@ -755,3 +755,24 @@ v0.7 满足海洋静物、双主题眼睛修正、固定时间步、WebGPU 优�
 - `git diff --check`：通过。
 - `prefers-reduced-motion` 通过 `220 ms` 短淡入分支和 CSS 媒体覆盖代码审计确认。
 - 未修改 `D:\project\blog`。
+
+## 2026-08-23 / v0.16 牵引首帧防闪验收
+
+### 首帧状态
+
+- 修复前复现值为 `data-choreography="active"`、阶段未开始、水母 `opacity: 1`、`transform: none`、`Y=0`。
+- 修复后同一时序点水母为 `opacity: 0`、`Y=112vh`，海流前沿为 `opacity: 0`、`Y=100vh`。
+- `arrival` 首个关键帧与 CSS 初始姿态完全一致，不会在动画接管时发生位置跳变。
+- `#about` 深链接在加载门退场后的第一张背景画面中不再出现右上角牵引水母。
+
+### 范围
+
+- 只修改开场装置的基础初始姿态，不改变 v0.15 的贝塞尔曲线、时长、整页裁切和区块显现逻辑。
+- 未修改 `D:\project\blog`。
+
+### 自动化与质量门禁
+
+- `bun test`：34 passed、0 failed。
+- `bun run check`：0 errors、0 warnings、0 hints。
+- `bun run build`：2 个静态路由构建成功。
+- `git diff --check`：通过。
