@@ -925,3 +925,32 @@ v0.7 满足海洋静物、双主题眼睛修正、固定时间步、WebGPU 优�
 - `bun run build`：2 个静态路由构建成功。
 - `git diff --check`：通过。
 - 未修改 `D:\project\blog`。
+
+## 2026-08-23 / v0.21 平滑运动节奏验收
+
+### 动效与性能
+
+- 页面、水母与海流前沿使用一条完整时长位移曲线，`impulse` 与 `tow` 标记不再切换运动函数。
+- 移动端使用导航与 Hero 两个视口内合成层，屏幕外章节在牵引期间不绘制；桌面端继续使用单一正文层。
+- Hero 待机视差、打字机和 CSS 循环在 `homepage:experience-ready` 后启动。
+- 背景遥测写入为 `4 Hz`，固定 `60 Hz` 仿真保持不变。
+- 最终采样无反向帧，导航与 Hero 的同步偏差低于 `0.001 px`。
+
+### 浏览器矩阵
+
+| 场景 | 结果 |
+| --- | --- |
+| 1440 x 900 / WebGPU | 两次均为 136 个有效位置帧，`p95 19-20 ms`，最大 `32-34 ms`，超过 `24 ms` 各 2 次 |
+| 390 x 844 / WebGPU | 两次均为 136 个有效位置帧，`p95 19-21 ms`，最大 `31 ms`，超过 `24 ms` 为 1-4 次 |
+| 1280 x 720 / WebGL2 | `webgl2 / ready / complete`，无反向位移，临时样式已清理，横向溢出为 0 |
+| 1280 x 720 / static | `static / ready / complete`，无反向位移，临时样式已清理，横向溢出为 0 |
+| 1440 x 900 / `#contact` | 牵引期间不启用首屏裁剪，完成后保留目标哈希与滚动位置 |
+| 控制台 | warning 与 error 均为 0 |
+
+### 自动化门禁
+
+- `bun test`：38 passed、0 failed。
+- `bun run check`：0 errors、0 warnings、0 hints。
+- `git diff --check`：通过。
+- `bun run build`：2 个静态路由构建成功。
+- 未修改 `D:\project\blog`。

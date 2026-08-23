@@ -244,6 +244,7 @@ export default function AmbientWorld() {
     host.dataset.jellySpeedMax = "0";
     host.dataset.coralAngleDeviation = "0";
     host.dataset.simulationStep = "60hz";
+    host.dataset.telemetryRate = "4hz";
     host.dataset.entityCount = "0";
     host.dataset.organismCount = "0";
     document.documentElement.dataset.ambientBackend = "static";
@@ -316,6 +317,7 @@ export default function AmbientWorld() {
       let hasRendered = false;
       let simulationAccumulator = 0;
       let simulationTick = 0;
+      let telemetryNextAt = 0;
       let lightTheme = true;
       const pulseOrigin = new THREE.Vector2();
 
@@ -1934,24 +1936,26 @@ export default function AmbientWorld() {
           0,
           simulationClock - AMBIENT_FIXED_STEP + schedule.alpha * AMBIENT_FIXED_STEP,
         );
-        host.dataset.simulationTick = String(simulationTick);
-        host.dataset.simulationStep = "60hz";
-        host.dataset.entitySpeedMax = entities.reduce(
-          (maximum, entity) => Math.max(maximum, Math.hypot(entity.vx, entity.vy)),
-          0,
-        ).toFixed(3);
-        host.dataset.jellySpeedMax = jellies.reduce(
-          (maximum, jelly) => Math.max(maximum, Math.hypot(jelly.vx, jelly.vy)),
-          0,
-        ).toFixed(3);
-        host.dataset.coralAngleDeviation = entities.reduce((maximum, entity) => {
-          if (entity.relic !== "coral") return maximum;
-          const deviation = Math.abs(Math.atan2(
-            Math.sin(entity.rotation - entity.restRotation),
-            Math.cos(entity.rotation - entity.restRotation),
-          ));
-          return Math.max(maximum, deviation);
-        }, 0).toFixed(3);
+        if (time >= telemetryNextAt) {
+          telemetryNextAt = time + 250;
+          host.dataset.simulationTick = String(simulationTick);
+          host.dataset.entitySpeedMax = entities.reduce(
+            (maximum, entity) => Math.max(maximum, Math.hypot(entity.vx, entity.vy)),
+            0,
+          ).toFixed(3);
+          host.dataset.jellySpeedMax = jellies.reduce(
+            (maximum, jelly) => Math.max(maximum, Math.hypot(jelly.vx, jelly.vy)),
+            0,
+          ).toFixed(3);
+          host.dataset.coralAngleDeviation = entities.reduce((maximum, entity) => {
+            if (entity.relic !== "coral") return maximum;
+            const deviation = Math.abs(Math.atan2(
+              Math.sin(entity.rotation - entity.restRotation),
+              Math.cos(entity.rotation - entity.restRotation),
+            ));
+            return Math.max(maximum, deviation);
+          }, 0).toFixed(3);
+        }
         if (schedule.droppedDelta > 0) {
           host.dataset.droppedTimeMs = schedule.droppedDelta.toFixed(3);
         }

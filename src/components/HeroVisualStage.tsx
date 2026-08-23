@@ -15,7 +15,7 @@ import {
   useSpring,
   useTransform,
 } from "motion/react";
-import { useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
 import { sampleIdleParallax } from "../lib/idleParallax";
 
 type VisualMode = {
@@ -65,6 +65,7 @@ const wrapIndex = (value: number) => (value + modes.length) % modes.length;
 export default function HeroVisualStage() {
   const [activeIndex, setActiveIndex] = useState(0);
   const [direction, setDirection] = useState(1);
+  const [experienceReady, setExperienceReady] = useState(false);
   const pointerStart = useRef<number | null>(null);
   const pointerActive = useRef(false);
   const reducedMotion = useReducedMotion();
@@ -81,8 +82,19 @@ export default function HeroVisualStage() {
   const activeMode = modes[activeIndex];
   const ActiveIcon = activeMode.icon;
 
+  useEffect(() => {
+    if (document.documentElement.dataset.experience === "ready") {
+      setExperienceReady(true);
+      return;
+    }
+
+    const handleReady = () => setExperienceReady(true);
+    window.addEventListener("homepage:experience-ready", handleReady, { once: true });
+    return () => window.removeEventListener("homepage:experience-ready", handleReady);
+  }, []);
+
   useAnimationFrame((time) => {
-    if (reducedMotion || pointerActive.current) return;
+    if (!experienceReady || reducedMotion || pointerActive.current) return;
     const idle = sampleIdleParallax(time, 12_800, 0.15, 0.1, 0.35);
     pointerX.set(idle.x);
     pointerY.set(idle.y);
