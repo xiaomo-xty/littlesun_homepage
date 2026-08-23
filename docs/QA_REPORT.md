@@ -895,3 +895,33 @@ v0.7 满足海洋静物、双主题眼睛修正、固定时间步、WebGPU 优�
 - `git diff --check`：通过。
 - `bun run build`：2 个静态路由构建成功。
 - 未修改 `D:\project\blog`。
+
+## 2026-08-23 / v0.20 连续牵引修复验收
+
+### 根因与实现
+
+- 修复前，冲击动画结束后会等待带 `0 / 12 / 24 / 36 ms` 延迟的四根触手，再创建牵引动画。
+- 修复前冲击曲线末端速度为零，牵引曲线起始速度较高，因此即使没有真实掉帧也会表现为停顿后突然加速。
+- 修复后页面、水母与海流只创建一条从冲击起点到牵引终点的 WAAPI 动画，阶段标记由计时器更新，不参与运动调度。
+- 两段曲线使用关键帧级 easing；交界位移按端点斜率和实际时长求解，正常路径与快速路径的计算速度差均低于浮点误差。
+- 钟形体、光环和触手使用同一个总时长，触手形态错峰通过内部关键帧 offset 表达，不再使用 delay。
+
+### 浏览器矩阵
+
+| 场景 | 结果 |
+| --- | --- |
+| 1440 x 900 / WebGPU | `webgpu / ready / complete`，交界有效帧间隔最高 `20 ms`，无反向位移，横向溢出为 0 |
+| 390 x 844 / WebGPU | `webgpu / ready / complete`，交界有效帧间隔最高 `21 ms`，正文与前沿同步，无反向位移 |
+| 1280 x 720 / WebGL2 | `webgl2 / ready / complete`，交界有效帧间隔最高 `20 ms`，横向溢出为 0 |
+| 1280 x 720 / static | `static / ready / complete`，交界有效帧间隔最高 `21 ms`，横向溢出为 0 |
+| 控制台 | WebGPU、WebGL2 与 static 均无 warning 或 error |
+
+移动 WebGPU 完成后 `scrollWidth` 比视口宽 `6 px`，来源是原有离屏背景装饰的变换包围盒，不是正文、页面前沿或本次连续牵引时间线。该装饰层不在本次修复范围内。
+
+### 自动化门禁
+
+- `bun test`：38 passed、0 failed。
+- `bun run check`：0 errors、0 warnings、0 hints。
+- `bun run build`：2 个静态路由构建成功。
+- `git diff --check`：通过。
+- 未修改 `D:\project\blog`。
