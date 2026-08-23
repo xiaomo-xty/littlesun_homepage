@@ -109,11 +109,22 @@
       };
       const playTogether = (animations) => Promise.all(animations.map(finished));
       const pageStartY = 96;
-      const pageImpulseY = 80;
       const jellyStartY = 68;
       const jellyChargeY = 71.5;
-      const jellyImpulseY = 50.5;
       const jellyFinishY = -28;
+      const impulseDuration = fast ? 170 : 420;
+      const towDuration = fast ? 620 : 1850;
+      const continuousTowDuration = impulseDuration + towDuration;
+      const impulseOffset = impulseDuration / continuousTowDuration;
+      const impulseEasing = "cubic-bezier(0.22, 0, 0.64, 0.53)";
+      const towEasing = "cubic-bezier(0.28, 0.32, 0.38, 1)";
+      const impulseEndSlope = (1 - 0.53) / (1 - 0.64);
+      const towStartSlope = 0.32 / 0.28;
+      const joinProgress = (towStartSlope / towDuration)
+        / ((impulseEndSlope / impulseDuration) + (towStartSlope / towDuration));
+      const interpolateJoinY = (startY, finishY) => startY + ((finishY - startY) * joinProgress);
+      const pageImpulseY = interpolateJoinY(pageStartY, 0);
+      const jellyImpulseY = interpolateJoinY(jellyChargeY, jellyFinishY);
 
       root.dataset.experience = "ambient";
       root.dataset.choreography = "active";
@@ -227,116 +238,82 @@
       root.dataset.experience = "entering";
       await nextFrames();
 
-      // The impulse makes the effort legible before the longer tow takes over.
+      // One timeline keeps the page velocity continuous across impulse and tow.
       root.dataset.choreographyPhase = "impulse";
-      const impulseDuration = fast ? 170 : 420;
-      const impulseAnimations = [play(
+      const continuousTowAnimations = [play(
         content,
         [
-          { transform: `translate3d(0, ${pageStartY}vh, 0)` },
-          { transform: `translate3d(0, ${pageImpulseY}vh, 0)` },
+          { transform: `translate3d(0, ${pageStartY}vh, 0)`, easing: impulseEasing },
+          { transform: `translate3d(0, ${pageImpulseY}vh, 0)`, offset: impulseOffset, easing: towEasing },
+          { transform: "translate3d(0, 0, 0)" },
         ],
-        { duration: impulseDuration, easing: "cubic-bezier(0.16, 0.84, 0.24, 1)", fill: "both" },
+        { duration: continuousTowDuration, fill: "both" },
       )];
       if (current instanceof HTMLElement) {
-        impulseAnimations.push(play(
+        continuousTowAnimations.push(play(
           current,
           [
-            { opacity: 0.9, transform: `translate3d(0, ${pageStartY}vh, 0) scaleY(0.94)` },
-            { opacity: 0.96, transform: `translate3d(0, ${pageImpulseY}vh, 0) scaleY(1.02)` },
+            { opacity: 0.9, transform: `translate3d(0, ${pageStartY}vh, 0) scaleY(0.94)`, easing: impulseEasing },
+            { opacity: 0.96, transform: `translate3d(0, ${pageImpulseY}vh, 0) scaleY(1.02)`, offset: impulseOffset, easing: towEasing },
+            { opacity: 0.66, transform: "translate3d(0, 0, 0)" },
           ],
-          { duration: impulseDuration, easing: "cubic-bezier(0.16, 0.84, 0.24, 1)", fill: "both" },
+          { duration: continuousTowDuration, fill: "both" },
         ));
       }
       if (jelly instanceof HTMLElement) {
-        impulseAnimations.push(play(
+        continuousTowAnimations.push(play(
           jelly,
           [
-            { opacity: 1, transform: `translate3d(-0.6vw, ${jellyChargeY}vh, 0) rotate(-1.2deg) scale(1.025, 0.97)` },
-            { opacity: 1, transform: `translate3d(0.35vw, ${jellyImpulseY - 1.5}vh, 0) rotate(0.9deg) scale(0.92, 1.1)`, offset: 0.74 },
-            { opacity: 1, transform: `translate3d(0.25vw, ${jellyImpulseY}vh, 0) rotate(0.5deg) scale(0.97, 1.04)` },
+            { opacity: 1, transform: `translate3d(-0.6vw, ${jellyChargeY}vh, 0) rotate(-1.2deg) scale(1.025, 0.97)`, easing: impulseEasing },
+            { opacity: 1, transform: `translate3d(0.25vw, ${jellyImpulseY}vh, 0) rotate(0.5deg) scale(0.97, 1.04)`, offset: impulseOffset, easing: towEasing },
+            { opacity: 0.96, transform: `translate3d(0.8vw, ${jellyFinishY}vh, 0) rotate(1.5deg) scale(0.92, 1.02)` },
           ],
-          { duration: impulseDuration, easing: "cubic-bezier(0.16, 0.84, 0.24, 1)", fill: "both" },
+          { duration: continuousTowDuration, fill: "both" },
         ));
       }
       if (bell instanceof HTMLElement) {
-        impulseAnimations.push(play(
+        continuousTowAnimations.push(play(
           bell,
           [
-            { opacity: 1, transform: "scale(1.13, 0.78)" },
-            { opacity: 1, transform: "scale(0.9, 1.14)", offset: 0.42 },
-            { opacity: 0.92, transform: "scale(1)" },
+            { opacity: 1, transform: "scale(1.13, 0.78)", easing: "cubic-bezier(0.2, 0, 0.24, 1)" },
+            { opacity: 1, transform: "scale(0.9, 1.14)", offset: impulseOffset * 0.44, easing: "cubic-bezier(0.4, 0, 0.3, 1)" },
+            { opacity: 0.92, transform: "scale(1)", offset: impulseOffset, easing: "cubic-bezier(0.45, 0, 0.55, 1)" },
+            { opacity: 0.88, transform: "scale(0.98, 1.02)", offset: impulseOffset + ((1 - impulseOffset) * 0.52), easing: "cubic-bezier(0.45, 0, 0.55, 1)" },
+            { opacity: 0.84, transform: "scale(1)" },
           ],
-          { duration: impulseDuration, easing: "cubic-bezier(0.16, 0.84, 0.24, 1)", fill: "both" },
+          { duration: continuousTowDuration, fill: "both" },
         ));
       }
       if (halo instanceof HTMLElement) {
-        impulseAnimations.push(play(
+        continuousTowAnimations.push(play(
           halo,
           [
-            { opacity: 0.96, transform: "scale(0.82)" },
-            { opacity: 1, transform: "scale(1.28)", offset: 0.48 },
-            { opacity: 0.68, transform: "scale(1.08)" },
+            { opacity: 0.96, transform: "scale(0.82)", easing: "cubic-bezier(0.2, 0, 0.24, 1)" },
+            { opacity: 1, transform: "scale(1.28)", offset: impulseOffset * 0.48, easing: "cubic-bezier(0.4, 0, 0.3, 1)" },
+            { opacity: 0.68, transform: "scale(1.08)", offset: impulseOffset, easing: "cubic-bezier(0.45, 0, 0.55, 1)" },
+            { opacity: 0.34, transform: "scale(1.02)" },
           ],
-          { duration: impulseDuration, easing: "cubic-bezier(0.16, 0.84, 0.24, 1)", fill: "both" },
+          { duration: continuousTowDuration, fill: "both" },
         ));
       }
       threads.forEach((thread, index) => {
-        impulseAnimations.push(play(
+        continuousTowAnimations.push(play(
           thread,
           [
-            { opacity: 1, transform: `rotate(${index % 2 === 0 ? 7 : -6.5}deg) scaleY(${0.76 - index * 0.015})` },
-            { opacity: 0.98, transform: `rotate(${index % 2 === 0 ? -4 : 4.5}deg) scaleY(1.12)`, offset: 0.56 },
-            { opacity: 0.92, transform: `rotate(${index % 2 === 0 ? -1 : 1}deg) scaleY(1.02)` },
-          ],
-          { duration: impulseDuration, delay: index * 12, easing: "cubic-bezier(0.16, 0.84, 0.24, 1)", fill: "both" },
-        ));
-      });
-      await playTogether(impulseAnimations);
-
-      root.dataset.choreographyPhase = "tow";
-      const towEasing = "cubic-bezier(0.18, 0.74, 0.18, 1)";
-      const towDuration = fast ? 620 : 1850;
-      const towAnimations = [play(
-        content,
-        [
-          { transform: `translate3d(0, ${pageImpulseY}vh, 0)` },
-          { transform: "translate3d(0, 0, 0)" },
-        ],
-        { duration: towDuration, easing: towEasing, fill: "both" },
-      )];
-      if (current instanceof HTMLElement) {
-        towAnimations.push(play(
-          current,
-          [
-            { opacity: 0.96, transform: `translate3d(0, ${pageImpulseY}vh, 0) scaleY(1.02)` },
-            { opacity: 0.66, transform: "translate3d(0, 0, 0)" },
-          ],
-          { duration: towDuration, easing: towEasing, fill: "both" },
-        ));
-      }
-      if (jelly instanceof HTMLElement) {
-        towAnimations.push(play(
-          jelly,
-          [
-            { opacity: 1, transform: `translate3d(0.25vw, ${jellyImpulseY}vh, 0) rotate(0.5deg) scale(0.97, 1.04)` },
-            { opacity: 0.96, transform: `translate3d(0.8vw, ${jellyFinishY}vh, 0) rotate(1.5deg) scale(0.92, 1.02)` },
-          ],
-          { duration: towDuration, easing: towEasing, fill: "both" },
-        ));
-      }
-      threads.forEach((thread, index) => {
-        towAnimations.push(play(
-          thread,
-          [
-            { opacity: 0.92, transform: `rotate(${index % 2 === 0 ? -1 : 1}deg) scaleY(1.02)` },
-            { opacity: 0.94, transform: `rotate(${index % 2 === 0 ? -1.4 : 1.2}deg) scaleY(1.035)`, offset: 0.46 },
+            { opacity: 1, transform: `rotate(${index % 2 === 0 ? 7 : -6.5}deg) scaleY(${0.76 - index * 0.015})`, easing: "cubic-bezier(0.2, 0, 0.24, 1)" },
+            { opacity: 0.98, transform: `rotate(${index % 2 === 0 ? -4 : 4.5}deg) scaleY(1.12)`, offset: impulseOffset * (0.5 + (index * 0.025)), easing: "cubic-bezier(0.4, 0, 0.3, 1)" },
+            { opacity: 0.92, transform: `rotate(${index % 2 === 0 ? -1 : 1}deg) scaleY(1.02)`, offset: impulseOffset, easing: "cubic-bezier(0.45, 0, 0.55, 1)" },
+            { opacity: 0.94, transform: `rotate(${index % 2 === 0 ? -1.4 : 1.2}deg) scaleY(1.035)`, offset: impulseOffset + ((1 - impulseOffset) * 0.46), easing: "cubic-bezier(0.45, 0, 0.55, 1)" },
             { opacity: 0.78, transform: "rotate(0deg) scaleY(1)" },
           ],
-          { duration: towDuration, easing: "cubic-bezier(0.45, 0, 0.55, 1)", fill: "both" },
+          { duration: continuousTowDuration, fill: "both" },
         ));
       });
-      await playTogether(towAnimations);
+      const towPhaseTimer = window.setTimeout(() => {
+        if (root.dataset.choreography === "active") root.dataset.choreographyPhase = "tow";
+      }, impulseDuration);
+      await playTogether(continuousTowAnimations);
+      window.clearTimeout(towPhaseTimer);
 
       root.dataset.choreographyPhase = "release";
       if (current instanceof HTMLElement) {
