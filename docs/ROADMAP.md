@@ -165,6 +165,16 @@
 - 钟形体压缩回弹、触手张力和光环集中反馈已完成
 - 低动态、WebGPU、WebGL2、static、桌面和移动端回归已完成
 
+### v0.22 Runtime Performance Budget
+
+- static、低动态与 Save-Data 的 Three/WebGPU 条件加载已完成
+- SSR 静态海洋与 GPU 初始化解耦已完成
+- 首次编舞不再等待 GPU 故障计时器已完成
+- 局部光照平方距离早退、采样缓存和低频细节预算已完成
+- 120/144 Hz 背景显示提交上限与固定 60 Hz 仿真分离已完成
+- 全屏后处理磨砂移除和运行时低动态暂停已完成
+- runtime policy、渲染调度与 43 项自动化测试已完成
+
 ## 非目标
 
 - 不修改 `D:\project\blog`

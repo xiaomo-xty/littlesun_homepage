@@ -15,6 +15,7 @@ import {
   sampleJellyPulse,
   sampleLocalLightInfluence,
   sampleOceanFlow,
+  scheduleCappedRender,
   scheduleFixedSimulation,
   schoolingSteer,
   wrapDriftingBody,
@@ -91,6 +92,40 @@ describe("ambient entity rules", () => {
     ];
 
     expect(sampleLocalLightInfluence({ x: 0, y: 0 }, sources, 0.9)).toBe(0.9);
+  });
+
+  test("render scheduling caps high-refresh displays near 60 fps", () => {
+    const countFrames = (displayFps: number) => {
+      let renderedAt: number | null = null;
+      let rendered = 0;
+      for (let frame = 0; frame < displayFps; frame += 1) {
+        const schedule = scheduleCappedRender(renderedAt, frame * 1000 / displayFps);
+        renderedAt = schedule.renderedAt;
+        if (schedule.shouldRender) rendered += 1;
+      }
+      return rendered;
+    };
+
+    expect(countFrames(60)).toBe(60);
+    expect(countFrames(120)).toBeGreaterThanOrEqual(59);
+    expect(countFrames(120)).toBeLessThanOrEqual(61);
+    expect(countFrames(144)).toBeGreaterThanOrEqual(59);
+    expect(countFrames(144)).toBeLessThanOrEqual(61);
+  });
+
+  test("local lights ignore distant sources without changing the falloff result", () => {
+    const sources = [
+      { x: 0, y: 0, radius: 2, intensity: 0.8 },
+      ...Array.from({ length: 64 }, (_, index) => ({
+        x: 100 + index,
+        y: -100 - index,
+        radius: 1,
+        intensity: 1,
+      })),
+    ];
+    const influence = sampleLocalLightInfluence({ x: 1, y: 0 }, sources, 1);
+
+    expect(influence).toBeCloseTo(0.4, 6);
   });
 
   test("jelly pulse contracts quickly, relaxes slowly and closes continuously", () => {

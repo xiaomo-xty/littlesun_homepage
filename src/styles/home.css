@@ -284,10 +284,16 @@
   background:
     linear-gradient(rgb(var(--page-rgb) / 0.08), rgb(var(--page-rgb) / 0.14)),
     radial-gradient(ellipse at center, transparent 46%, rgb(var(--page-rgb) / 0.34) 100%);
-  backdrop-filter: blur(1.1px) saturate(0.88);
-  -webkit-backdrop-filter: blur(1.1px) saturate(0.88);
   opacity: 0.58;
   transition: opacity 980ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.ambient-world[data-motion="reduced"] canvas {
+  opacity: 0 !important;
+}
+
+.ambient-world[data-motion="reduced"] .ambient-static-fallback {
+  opacity: 0.58 !important;
 }
 
 html[data-experience="ambient"] .ambient-world[data-status="ready"]:not([data-backend="static"]) canvas {

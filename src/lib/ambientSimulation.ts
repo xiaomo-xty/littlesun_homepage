@@ -68,6 +68,7 @@ export type FixedStepSchedule = {
 };
 
 export const AMBIENT_FIXED_STEP = 1 / 60;
+export const AMBIENT_RENDER_FPS = 60;
 export const AMBIENT_MAX_FIXED_STEPS = 8;
 export const AMBIENT_ENTITY_RESTITUTION = 0.08;
 export const AMBIENT_ENTITY_MAX_SPEED = 0.3;
@@ -98,6 +99,22 @@ export function scheduleFixedSimulation(
     alpha: Math.max(0, Math.min(1, nextAccumulator / safeStep)),
     simulatedDelta: count * safeStep,
     droppedDelta: safeFrameDelta - acceptedDelta,
+  };
+}
+
+export function scheduleCappedRender(
+  previousRenderedAt: number | null,
+  now: number,
+  targetFps = AMBIENT_RENDER_FPS,
+) {
+  const interval = 1000 / Math.max(1, targetFps + 0.5);
+  if (previousRenderedAt !== null && now - previousRenderedAt < interval) {
+    return { shouldRender: false, renderedAt: previousRenderedAt };
+  }
+  const elapsed = previousRenderedAt === null ? interval : now - previousRenderedAt;
+  return {
+    shouldRender: true,
+    renderedAt: now - (elapsed % interval),
   };
 }
 
@@ -206,8 +223,11 @@ export function sampleLocalLightInfluence(
   let influence = 0;
   for (const source of sources) {
     const radius = Math.max(0.001, source.radius);
-    const distance = Math.hypot(position.x - source.x, position.y - source.y);
-    if (distance >= radius) continue;
+    const deltaX = position.x - source.x;
+    const deltaY = position.y - source.y;
+    const distanceSquared = deltaX * deltaX + deltaY * deltaY;
+    if (distanceSquared >= radius * radius) continue;
+    const distance = Math.sqrt(distanceSquared);
     influence += Math.max(0, source.intensity) * smoothstep(1 - distance / radius);
   }
   return Math.min(Math.max(0, maximum), influence);
