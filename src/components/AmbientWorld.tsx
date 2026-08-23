@@ -1857,6 +1857,10 @@ export default function AmbientWorld() {
         <span className="ambient-static-pixel ambient-static-pixel-two"></span>
         <span className="ambient-static-pixel ambient-static-pixel-three"></span>
       </div>
+      <div className="ambient-structural-light" aria-hidden="true">
+        <i className="ambient-light-band ambient-light-band-one"></i>
+        <i className="ambient-light-band ambient-light-band-two"></i>
+      </div>
       <div className="ambient-postprocess"></div>
     </div>
   );
