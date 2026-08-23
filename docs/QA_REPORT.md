@@ -719,3 +719,39 @@ v0.7 满足海洋静物、双主题眼睛修正、固定时间步、WebGPU 优�
 - `bun run build`：2 个静态路由构建成功。
 - `git diff --check`：通过。
 - 未修改 `D:\project\blog`。
+
+## 2026-08-23 / v0.15 整页物理牵引验收
+
+### 运动与受力关系
+
+- 桌面端以约 `180 ms` 间隔采样，正文与页面前沿依次经过约 `691 / 685 / 668 / 648 / 586 / 430 / 259 / 142 / 79 / 38 / 14 / 3 / 0 px`，每个采样点的 `Y` 坐标一致。
+- 主牵引阶段水母与页面前沿保持约 `203 px` 的固定垂直距离，触手末端落在前沿附近，不再表现为独立上升。
+- 张力承载使用 `cubic-bezier(0.45, 0, 0.55, 1)`，主牵引使用 `cubic-bezier(0.45, 0, 0.18, 1)`；两个阶段起止速度连续回到零，没有线性匀速或突然刹停。
+- 正文没有淡入关键帧，页面主体完全依靠真实 `translate3d` 位移进入。
+
+### 深链接与状态
+
+- `#contact` 刷新实测保留约 `scrollY=4277`，正文使用 `inset(4276.67px 0 0)` 裁切边界，前一个区块没有穿过页面前沿。
+- 联系区标题在牵引阶段保持 `opacity: 1`，完成后为 `data-reveal-state="visible"`，普通滚动进退场随后正常接管。
+- `loading`、`ambient` 和 `entering` 的根元素 `overflow` 均为 `hidden`；完成后恢复 `visible`。
+- 完成后正文不再带 `inert`，内联 `transform`、`clip-path` 与 `will-change` 均已清空。
+
+### 浏览器矩阵
+
+| 场景 | 结果 |
+| --- | --- |
+| 1280 x 720 / WebGPU / 深色 | 整页前沿、触手与水母同步，完成后 0 横向溢出 |
+| 1280 x 720 / WebGPU / 浅色 | `webgpu / ready`，编舞约 `5205 ms`，临时样式已清理 |
+| 390 x 844 / WebGPU / 深浅主题 | 牵引关系清楚，Hero 无裁切，无有效横向滚动 |
+| 1280 x 720 / WebGL2 / 浅色 | `webgl2 / ready`，编舞约 `5205 ms` |
+| 1280 x 720 / static / 浅色 | `static / ready`，编舞约 `5112 ms` |
+| 1280 x 720 / WebGPU / `#contact` | 当前区块随整页进入，完成后保持深链接滚动位置 |
+
+### 自动化与质量门禁
+
+- `bun test`：34 passed、0 failed。
+- `bun run check`：0 errors、0 warnings、0 hints。
+- `bun run build`：2 个静态路由构建成功。
+- `git diff --check`：通过。
+- `prefers-reduced-motion` 通过 `220 ms` 短淡入分支和 CSS 媒体覆盖代码审计确认。
+- 未修改 `D:\project\blog`。
