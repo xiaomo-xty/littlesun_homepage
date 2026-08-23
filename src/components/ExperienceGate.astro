@@ -60,6 +60,13 @@
       window.requestAnimationFrame(step);
     });
     const finished = (animation) => animation.finished.catch(() => undefined);
+    const clearContentEntranceStyles = () => {
+      content.style.removeProperty("opacity");
+      content.style.removeProperty("transform");
+      content.style.removeProperty("clip-path");
+      content.style.removeProperty("-webkit-clip-path");
+      content.style.removeProperty("will-change");
+    };
 
     content.setAttribute("inert", "");
 
@@ -92,9 +99,18 @@
       const threads = choreography
         ? Array.from(choreography.querySelectorAll("[data-tow-thread]"))
         : [];
-      const header = document.querySelector(".site-header");
-      const heroCopy = document.querySelector(".hero-copy");
-      const visualStage = document.querySelector("[data-hero-stage-entrance]");
+      const trackedAnimations = [];
+      const play = (target, keyframes, options) => {
+        const animation = target.animate(keyframes, options);
+        trackedAnimations.push(animation);
+        return animation;
+      };
+      const playTogether = (animations) => Promise.all(animations.map(finished));
+      const pageStartY = 96;
+      const pageBearingY = 92;
+      const jellyStartY = 68;
+      const jellyBearingY = 64;
+      const jellyFinishY = -28;
 
       root.dataset.experience = "ambient";
       root.dataset.choreography = "active";
@@ -104,111 +120,146 @@
 
       root.dataset.choreographyPhase = "arrival";
       if (jelly instanceof HTMLElement) {
-        const arrival = jelly.animate(
+        const arrival = play(
+          jelly,
           [
-            { opacity: 0, transform: "translate3d(0, 34vh, 0) scale(0.82)" },
-            { opacity: 1, transform: "translate3d(0, -2vh, 0) scale(1.03)", offset: 0.74 },
-            { opacity: 1, transform: "translate3d(0, 0, 0) scale(1)" },
+            { opacity: 0, transform: "translate3d(0, 112vh, 0) scale(0.84, 1.08)" },
+            { opacity: 1, transform: `translate3d(-0.5vw, ${jellyStartY + 1.5}vh, 0) scale(1.03, 0.97)`, offset: 0.82 },
+            { opacity: 1, transform: `translate3d(0, ${jellyStartY}vh, 0) scale(1)` },
           ],
-          { duration: fast ? 360 : 820, easing: "cubic-bezier(0.33, 1, 0.68, 1)", fill: "both" },
+          { duration: fast ? 320 : 880, easing: "cubic-bezier(0.24, 0.7, 0.22, 1)", fill: "both" },
         );
         await finished(arrival);
       }
 
       root.dataset.choreographyPhase = "tension";
-      if (threads.length > 0) {
-        const tensionAnimations = threads.map((thread, index) => thread.animate(
-          [
-            { transform: `rotate(${index % 2 === 0 ? -4 : 5}deg) scaleY(0.72)` },
-            { transform: `rotate(${index % 2 === 0 ? 2 : -3}deg) scaleY(1.12)` },
-            { transform: "rotate(0deg) scaleY(1)" },
-          ],
-          { duration: fast ? 180 : 460, delay: index * 34, easing: "cubic-bezier(0.45, 0, 0.55, 1)", fill: "both" },
-        ));
-        await Promise.all(tensionAnimations.map(finished));
-      }
-
-      const entranceTargets = [header, heroCopy, visualStage].filter((target) => target instanceof HTMLElement);
-      entranceTargets.forEach((target, index) => {
-        target.style.opacity = "0";
-        target.style.transform = `translate3d(0, ${index === 0 ? 30 : index === 1 ? 112 : 148}px, 0)`;
-      });
-
-      content.removeAttribute("inert");
-      root.dataset.experience = "entering";
-      root.dataset.choreographyPhase = "tow";
-
-      const animations = [];
-      if (header instanceof HTMLElement) {
-        animations.push(header.animate(
-          [
-            { opacity: 0, transform: "translate3d(0, 30px, 0)", easing: "cubic-bezier(0.45, 0, 0.55, 1)" },
-            { opacity: 0.08, transform: "translate3d(0, 27px, 0)", offset: 0.22, easing: "cubic-bezier(0.22, 0.68, 0.24, 1)" },
-            { opacity: 0.94, transform: "translate3d(0, 3px, 0)", offset: 0.76, easing: "cubic-bezier(0.22, 1, 0.36, 1)" },
-            { opacity: 1, transform: "translate3d(0, 0, 0)" },
-          ],
-          { duration: fast ? 420 : 2200, easing: "linear", fill: "both" },
-        ));
-      }
-      if (heroCopy instanceof HTMLElement) {
-        animations.push(heroCopy.animate(
-          [
-            { opacity: 0, transform: "translate3d(0, 112px, 0)", easing: "cubic-bezier(0.45, 0, 0.55, 1)" },
-            { opacity: 0.08, transform: "translate3d(0, 106px, 0)", offset: 0.18, easing: "cubic-bezier(0.22, 0.68, 0.24, 1)" },
-            { opacity: 0.72, transform: "translate3d(0, 42px, 0)", offset: 0.58, easing: "cubic-bezier(0.22, 1, 0.36, 1)" },
-            { opacity: 1, transform: "translate3d(0, -4px, 0)", offset: 0.88, easing: "cubic-bezier(0.22, 1, 0.36, 1)" },
-            { opacity: 1, transform: "translate3d(0, 0, 0)" },
-          ],
-          { duration: fast ? 620 : 2720, delay: fast ? 0 : 90, easing: "linear", fill: "both" },
-        ));
-      }
-      if (visualStage instanceof HTMLElement) {
-        animations.push(visualStage.animate(
-          [
-            { opacity: 0, transform: "translate3d(0, 148px, 0) rotate(1.4deg) scale(0.965)", easing: "cubic-bezier(0.45, 0, 0.55, 1)" },
-            { opacity: 0.06, transform: "translate3d(0, 140px, 0) rotate(1.2deg) scale(0.97)", offset: 0.18, easing: "cubic-bezier(0.22, 0.68, 0.24, 1)" },
-            { opacity: 0.7, transform: "translate3d(0, 54px, 0) rotate(0.35deg) scale(0.99)", offset: 0.58, easing: "cubic-bezier(0.22, 1, 0.36, 1)" },
-            { opacity: 1, transform: "translate3d(0, -4px, 0) rotate(-0.16deg) scale(1.003)", offset: 0.88, easing: "cubic-bezier(0.22, 1, 0.36, 1)" },
-            { opacity: 1, transform: "translate3d(0, 0, 0) rotate(0deg) scale(1)" },
-          ],
-          { duration: fast ? 680 : 2860, delay: fast ? 40 : 150, easing: "linear", fill: "both" },
-        ));
-      }
+      const tensionAnimations = threads.map((thread, index) => play(
+        thread,
+        [
+          { opacity: 0.34, transform: `rotate(${index % 2 === 0 ? -5 : 6}deg) scaleY(0.68)` },
+          { opacity: 0.9, transform: `rotate(${index % 2 === 0 ? 2 : -3}deg) scaleY(1.08)`, offset: 0.72 },
+          { opacity: 0.86, transform: "rotate(0deg) scaleY(1)" },
+        ],
+        { duration: fast ? 160 : 520, delay: index * 28, easing: "cubic-bezier(0.45, 0, 0.55, 1)", fill: "both" },
+      ));
       if (current instanceof HTMLElement) {
-        animations.push(current.animate(
+        tensionAnimations.push(play(
+          current,
           [
-            { opacity: 0, transform: "translate3d(0, 30vh, 0) scaleY(0.82)", easing: "cubic-bezier(0.45, 0, 0.55, 1)" },
-            { opacity: 0.24, transform: "translate3d(0, 22vh, 0) scaleY(0.9)", offset: 0.2, easing: "cubic-bezier(0.22, 0.68, 0.24, 1)" },
-            { opacity: 0.78, transform: "translate3d(0, -6vh, 0) scaleY(1)", offset: 0.54, easing: "cubic-bezier(0.22, 1, 0.36, 1)" },
-            { opacity: 0.36, transform: "translate3d(0, -44vh, 0) scaleY(1.06)", offset: 0.82, easing: "cubic-bezier(0.22, 1, 0.36, 1)" },
-            { opacity: 0, transform: "translate3d(0, -76vh, 0) scaleY(0.96)" },
+            { opacity: 0, transform: "translate3d(0, 100vh, 0)" },
+            { opacity: 0.82, transform: `translate3d(0, ${pageStartY}vh, 0)` },
           ],
-          { duration: fast ? 760 : 2880, easing: "linear", fill: "both" },
+          { duration: fast ? 200 : 560, easing: "cubic-bezier(0.45, 0, 0.55, 1)", fill: "both" },
+        ));
+      }
+      await playTogether(tensionAnimations);
+
+      const scrollOffset = Math.max(0, window.scrollY);
+      const clipPath = `inset(${scrollOffset}px 0 0 0)`;
+      content.style.opacity = "1";
+      content.style.transform = `translate3d(0, ${pageStartY}vh, 0)`;
+      content.style.clipPath = clipPath;
+      content.style.webkitClipPath = clipPath;
+      content.style.willChange = "transform";
+
+      root.dataset.experience = "entering";
+      await nextFrames();
+
+      // The page edge, the current, and the jelly share both motion segments.
+      root.dataset.choreographyPhase = "bearing";
+      const bearingAnimations = [play(
+        content,
+        [
+          { transform: `translate3d(0, ${pageStartY}vh, 0)` },
+          { transform: `translate3d(0, ${pageBearingY}vh, 0)` },
+        ],
+        { duration: fast ? 140 : 580, easing: "cubic-bezier(0.45, 0, 0.55, 1)", fill: "both" },
+      )];
+      if (current instanceof HTMLElement) {
+        bearingAnimations.push(play(
+          current,
+          [
+            { opacity: 0.82, transform: `translate3d(0, ${pageStartY}vh, 0)` },
+            { opacity: 0.9, transform: `translate3d(0, ${pageBearingY}vh, 0)` },
+          ],
+          { duration: fast ? 140 : 580, easing: "cubic-bezier(0.45, 0, 0.55, 1)", fill: "both" },
         ));
       }
       if (jelly instanceof HTMLElement) {
-        animations.push(jelly.animate(
+        bearingAnimations.push(play(
+          jelly,
           [
-            { opacity: 1, transform: "translate3d(0, 0, 0) scale(1)", easing: "cubic-bezier(0.45, 0, 0.55, 1)" },
-            { opacity: 1, transform: "translate3d(-0.4vw, -4vh, 0) rotate(-1deg) scale(0.94, 1.04)", offset: 0.2, easing: "cubic-bezier(0.22, 0.68, 0.24, 1)" },
-            { opacity: 1, transform: "translate3d(-1.2vw, -31vh, 0) rotate(-3deg) scale(0.98)", offset: 0.54, easing: "cubic-bezier(0.22, 1, 0.36, 1)" },
-            { opacity: 0.78, transform: "translate3d(0.6vw, -59vh, 0) rotate(2deg) scale(0.88)", offset: 0.82, easing: "cubic-bezier(0.22, 1, 0.36, 1)" },
-            { opacity: 0, transform: "translate3d(2vw, -82vh, 0) rotate(5deg) scale(0.72)", filter: "blur(2px)" },
+            { opacity: 1, transform: `translate3d(0, ${jellyStartY}vh, 0) scale(1)` },
+            { opacity: 1, transform: `translate3d(-0.2vw, ${jellyBearingY}vh, 0) scale(0.96, 1.05)` },
           ],
-          { duration: fast ? 780 : 2920, easing: "linear", fill: "both" },
+          { duration: fast ? 140 : 580, easing: "cubic-bezier(0.45, 0, 0.55, 1)", fill: "both" },
+        ));
+      }
+      await playTogether(bearingAnimations);
+
+      root.dataset.choreographyPhase = "tow";
+      const towEasing = "cubic-bezier(0.45, 0, 0.18, 1)";
+      const towDuration = fast ? 680 : 2100;
+      const towAnimations = [play(
+        content,
+        [
+          { transform: `translate3d(0, ${pageBearingY}vh, 0)` },
+          { transform: "translate3d(0, 0, 0)" },
+        ],
+        { duration: towDuration, easing: towEasing, fill: "both" },
+      )];
+      if (current instanceof HTMLElement) {
+        towAnimations.push(play(
+          current,
+          [
+            { opacity: 0.9, transform: `translate3d(0, ${pageBearingY}vh, 0)` },
+            { opacity: 0.66, transform: "translate3d(0, 0, 0)" },
+          ],
+          { duration: towDuration, easing: towEasing, fill: "both" },
+        ));
+      }
+      if (jelly instanceof HTMLElement) {
+        towAnimations.push(play(
+          jelly,
+          [
+            { opacity: 1, transform: `translate3d(-0.2vw, ${jellyBearingY}vh, 0) scale(0.96, 1.05)` },
+            { opacity: 0.96, transform: `translate3d(0.8vw, ${jellyFinishY}vh, 0) rotate(1.5deg) scale(0.92, 1.02)` },
+          ],
+          { duration: towDuration, easing: towEasing, fill: "both" },
+        ));
+      }
+      threads.forEach((thread, index) => {
+        towAnimations.push(play(
+          thread,
+          [
+            { opacity: 0.86, transform: "rotate(0deg) scaleY(1)" },
+            { opacity: 0.94, transform: `rotate(${index % 2 === 0 ? -1.4 : 1.2}deg) scaleY(1.035)`, offset: 0.46 },
+            { opacity: 0.78, transform: "rotate(0deg) scaleY(1)" },
+          ],
+          { duration: towDuration, easing: "cubic-bezier(0.45, 0, 0.55, 1)", fill: "both" },
+        ));
+      });
+      await playTogether(towAnimations);
+
+      root.dataset.choreographyPhase = "release";
+      if (current instanceof HTMLElement) {
+        await finished(play(
+          current,
+          [
+            { opacity: 0.66, transform: "translate3d(0, 0, 0)" },
+            { opacity: 0, transform: "translate3d(0, -7vh, 0)" },
+          ],
+          { duration: fast ? 160 : 360, easing: "cubic-bezier(0.4, 0, 0.2, 1)", fill: "both" },
         ));
       }
 
-      await Promise.all(animations.map(finished));
       root.dataset.experience = "ready";
       root.dataset.choreography = "complete";
       root.dataset.choreographyPhase = "complete";
       root.dataset.choreographyDurationMs = String(Math.round(performance.now() - choreographyStartedAt));
-      entranceTargets.forEach((target) => {
-        target.style.removeProperty("opacity");
-        target.style.removeProperty("transform");
-      });
-      animations.forEach((animation) => animation.cancel());
+      content.removeAttribute("inert");
+      clearContentEntranceStyles();
+      trackedAnimations.forEach((animation) => animation.cancel());
       gate.hidden = true;
       window.dispatchEvent(new CustomEvent("homepage:experience-ready"));
     };
@@ -250,7 +301,9 @@
     transition: opacity 440ms cubic-bezier(0.22, 1, 0.36, 1), visibility 0s linear 440ms;
   }
 
-  html[data-experience="loading"] { overflow: hidden; }
+  html[data-experience="loading"],
+  html[data-experience="ambient"],
+  html[data-experience="entering"] { overflow: hidden; }
 
   html[data-experience="loading"] .experience-gate {
     opacity: 1;
@@ -360,10 +413,10 @@
 
   .reveal-jelly {
     position: absolute;
-    top: 60%;
+    top: 0;
     left: clamp(68%, 73vw, 78%);
     width: 82px;
-    height: 150px;
+    height: calc(56px + clamp(134px, 21vh, 188px));
     filter: drop-shadow(0 0 18px color-mix(in srgb, var(--accent) 42%, transparent));
     transform-origin: 50% 18%;
   }
@@ -408,16 +461,16 @@
     top: 49px;
     display: block;
     width: 20px;
-    height: 86px;
+    height: clamp(134px, 21vh, 188px);
     border-left: 2px solid color-mix(in srgb, var(--accent-strong) 78%, transparent);
     border-radius: 50%;
     transform-origin: top;
   }
 
   .reveal-tow-thread-one { left: 13px; transform: rotate(7deg); }
-  .reveal-tow-thread-two { left: 31px; height: 96px; transform: rotate(-5deg); }
-  .reveal-tow-thread-three { left: 49px; height: 92px; transform: rotate(6deg); }
-  .reveal-tow-thread-four { left: 65px; height: 78px; transform: rotate(-8deg); }
+  .reveal-tow-thread-two { left: 31px; height: clamp(142px, 22vh, 196px); transform: rotate(-5deg); }
+  .reveal-tow-thread-three { left: 49px; height: clamp(138px, 21.5vh, 192px); transform: rotate(6deg); }
+  .reveal-tow-thread-four { left: 65px; height: clamp(128px, 20vh, 180px); transform: rotate(-8deg); }
 
   .reveal-pixel {
     position: absolute;
@@ -434,7 +487,7 @@
 
   .reveal-current {
     position: absolute;
-    top: 72%;
+    top: 0;
     right: -12%;
     left: -12%;
     height: 46vh;
@@ -462,7 +515,7 @@
   html[data-experience="loading"] .site-content,
   html[data-experience="ambient"] .site-content { opacity: 0; visibility: hidden; pointer-events: none; }
 
-  html[data-experience="entering"] .site-content,
+  html[data-experience="entering"] .site-content { opacity: 1; visibility: visible; pointer-events: none; }
   html[data-experience="ready"] .site-content { opacity: 1; visibility: visible; pointer-events: auto; }
 
   @keyframes loader-jelly-glide {
@@ -495,7 +548,7 @@
   }
 
   @media (max-width: 767px) {
-    .reveal-jelly { top: 66%; left: 68%; width: 68px; transform: scale(0.84); }
+    .reveal-jelly { left: 68%; width: 68px; }
     .reveal-current { right: -32%; left: -32%; }
   }
 
