@@ -40,6 +40,8 @@
     const content = document.querySelector("[data-site-content]");
     const choreography = document.querySelector("[data-reveal-choreography]");
     if (!(gate instanceof HTMLElement) || !(content instanceof HTMLElement)) return;
+    const siteHeader = content.querySelector(".site-header");
+    const heroSection = content.querySelector(".hero-section");
 
     const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     const startedAt = performance.now();
@@ -61,11 +63,15 @@
     });
     const finished = (animation) => animation.finished.catch(() => undefined);
     const clearContentEntranceStyles = () => {
-      content.style.removeProperty("opacity");
-      content.style.removeProperty("transform");
-      content.style.removeProperty("clip-path");
-      content.style.removeProperty("-webkit-clip-path");
-      content.style.removeProperty("will-change");
+      [content, siteHeader, heroSection].forEach((element) => {
+        if (!(element instanceof HTMLElement)) return;
+        element.style.removeProperty("opacity");
+        element.style.removeProperty("transform");
+        element.style.removeProperty("clip-path");
+        element.style.removeProperty("-webkit-clip-path");
+        element.style.removeProperty("will-change");
+      });
+      delete root.dataset.entryCull;
     };
 
     content.setAttribute("inert", "");
@@ -116,15 +122,7 @@
       const towDuration = fast ? 620 : 1850;
       const continuousTowDuration = impulseDuration + towDuration;
       const impulseOffset = impulseDuration / continuousTowDuration;
-      const impulseEasing = "cubic-bezier(0.22, 0, 0.64, 0.53)";
-      const towEasing = "cubic-bezier(0.28, 0.32, 0.38, 1)";
-      const impulseEndSlope = (1 - 0.53) / (1 - 0.64);
-      const towStartSlope = 0.32 / 0.28;
-      const joinProgress = (towStartSlope / towDuration)
-        / ((impulseEndSlope / impulseDuration) + (towStartSlope / towDuration));
-      const interpolateJoinY = (startY, finishY) => startY + ((finishY - startY) * joinProgress);
-      const pageImpulseY = interpolateJoinY(pageStartY, 0);
-      const jellyImpulseY = interpolateJoinY(jellyChargeY, jellyFinishY);
+      const towMotionEasing = "cubic-bezier(0.12, 0, 0.88, 1)";
 
       root.dataset.experience = "ambient";
       root.dataset.choreography = "active";
@@ -229,46 +227,57 @@
 
       const scrollOffset = Math.max(0, window.scrollY);
       const clipPath = `inset(${scrollOffset}px 0 0 0)`;
+      const topEntryTargets = [siteHeader, heroSection].filter(
+        (element) => element instanceof HTMLElement,
+      );
+      const useViewportEntryTargets = scrollOffset < 1
+        && window.matchMedia("(max-width: 767px)").matches
+        && topEntryTargets.length > 0;
+      const entranceTargets = useViewportEntryTargets
+        ? topEntryTargets
+        : [content];
+      if (useViewportEntryTargets) root.dataset.entryCull = "hero";
       content.style.opacity = "1";
-      content.style.transform = `translate3d(0, ${pageStartY}vh, 0)`;
-      content.style.clipPath = clipPath;
-      content.style.webkitClipPath = clipPath;
-      content.style.willChange = "transform";
+      if (entranceTargets[0] === content) {
+        content.style.clipPath = clipPath;
+        content.style.webkitClipPath = clipPath;
+      }
+      entranceTargets.forEach((target) => {
+        target.style.transform = `translate3d(0, ${pageStartY}vh, 0)`;
+        target.style.willChange = "transform";
+      });
 
       root.dataset.experience = "entering";
       await nextFrames();
 
-      // One timeline keeps the page velocity continuous across impulse and tow.
+      // A single position curve avoids a perceptible acceleration join mid-tow.
       root.dataset.choreographyPhase = "impulse";
-      const continuousTowAnimations = [play(
-        content,
+      const continuousTowAnimations = entranceTargets.map((target) => play(
+        target,
         [
-          { transform: `translate3d(0, ${pageStartY}vh, 0)`, easing: impulseEasing },
-          { transform: `translate3d(0, ${pageImpulseY}vh, 0)`, offset: impulseOffset, easing: towEasing },
+          { transform: `translate3d(0, ${pageStartY}vh, 0)` },
           { transform: "translate3d(0, 0, 0)" },
         ],
-        { duration: continuousTowDuration, fill: "both" },
-      )];
+        { duration: continuousTowDuration, easing: towMotionEasing, fill: "both" },
+      ));
       if (current instanceof HTMLElement) {
         continuousTowAnimations.push(play(
           current,
           [
-            { opacity: 0.9, transform: `translate3d(0, ${pageStartY}vh, 0) scaleY(0.94)`, easing: impulseEasing },
-            { opacity: 0.96, transform: `translate3d(0, ${pageImpulseY}vh, 0) scaleY(1.02)`, offset: impulseOffset, easing: towEasing },
+            { opacity: 0.9, transform: `translate3d(0, ${pageStartY}vh, 0) scaleY(0.94)` },
             { opacity: 0.66, transform: "translate3d(0, 0, 0)" },
           ],
-          { duration: continuousTowDuration, fill: "both" },
+          { duration: continuousTowDuration, easing: towMotionEasing, fill: "both" },
         ));
       }
       if (jelly instanceof HTMLElement) {
         continuousTowAnimations.push(play(
           jelly,
           [
-            { opacity: 1, transform: `translate3d(-0.6vw, ${jellyChargeY}vh, 0) rotate(-1.2deg) scale(1.025, 0.97)`, easing: impulseEasing },
-            { opacity: 1, transform: `translate3d(0.25vw, ${jellyImpulseY}vh, 0) rotate(0.5deg) scale(0.97, 1.04)`, offset: impulseOffset, easing: towEasing },
+            { opacity: 1, transform: `translate3d(-0.6vw, ${jellyChargeY}vh, 0) rotate(-1.2deg) scale(1.025, 0.97)` },
             { opacity: 0.96, transform: `translate3d(0.8vw, ${jellyFinishY}vh, 0) rotate(1.5deg) scale(0.92, 1.02)` },
           ],
-          { duration: continuousTowDuration, fill: "both" },
+          { duration: continuousTowDuration, easing: towMotionEasing, fill: "both" },
         ));
       }
       if (bell instanceof HTMLElement) {
@@ -492,7 +501,6 @@
     width: 82px;
     height: calc(56px + clamp(134px, 21vh, 188px));
     opacity: 0;
-    filter: drop-shadow(0 0 18px color-mix(in srgb, var(--accent) 42%, transparent));
     transform: translate3d(0, 112vh, 0) scale(0.84, 1.08);
     transform-origin: 50% 18%;
   }
@@ -596,6 +604,14 @@
 
   html[data-experience="entering"] .site-content { opacity: 1; visibility: visible; pointer-events: none; }
   html[data-experience="ready"] .site-content { opacity: 1; visibility: visible; pointer-events: auto; }
+
+  html[data-entry-cull="hero"][data-experience="entering"] #main-content > :not(.hero-section) {
+    visibility: hidden;
+  }
+
+  html:not([data-experience="ready"]) .site-content * {
+    animation-play-state: paused !important;
+  }
 
   @keyframes loader-jelly-glide {
     0%, 100% { transform: translate3d(-4px, 5px, 0); }
