@@ -1,10 +1,22 @@
 <script>
   const initializeSectionTransitions = () => {
+  if (document.documentElement.dataset.sectionTransitions === "ready") return;
+  document.documentElement.dataset.sectionTransitions = "ready";
   const observed = new Map<Element, number>();
   const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
 
+  const setMotionState = (element: HTMLElement, visible: boolean) => {
+    const state = visible ? "visible" : "hidden";
+    element.querySelectorAll<HTMLElement>("[data-motion-item]").forEach((item, index) => {
+      item.dataset.motionState = state;
+      item.style.setProperty("--motion-index", String(index));
+    });
+  };
+
   const setPresence = (element: HTMLElement, visible: boolean) => {
-    element.dataset.revealState = visible ? "visible" : "hidden";
+    const state = visible ? "visible" : "hidden";
+    element.dataset.revealState = state;
+    setMotionState(element, visible);
     window.dispatchEvent(new CustomEvent("homepage:section-presence", {
       detail: {
         id: element.id || element.dataset.reveal || "section",
@@ -24,7 +36,6 @@
   if (reduceMotion.matches || !("IntersectionObserver" in window)) {
     revealImmediately();
   } else {
-    document.documentElement.classList.add("reveal-ready");
     const observer = new IntersectionObserver((entries) => {
       entries.forEach((entry) => {
         const element = entry.target as HTMLElement;
@@ -49,9 +60,13 @@
     });
 
     document.querySelectorAll<HTMLElement>("[data-reveal]").forEach((element) => {
-      element.dataset.revealState = "hidden";
+      const rect = element.getBoundingClientRect();
+      const visible = rect.bottom > window.innerHeight * 0.08
+        && rect.top < window.innerHeight * 0.86;
+      setPresence(element, visible);
       observer.observe(element);
     });
+    document.documentElement.classList.add("reveal-ready");
 
     reduceMotion.addEventListener("change", () => {
       if (reduceMotion.matches) {
@@ -65,6 +80,6 @@
   };
 
   const startSectionTransitions = () => window.requestAnimationFrame(initializeSectionTransitions);
-  if (document.readyState === "complete") startSectionTransitions();
-  else window.addEventListener("load", startSectionTransitions, { once: true });
+  if (document.documentElement.dataset.experience === "ready") startSectionTransitions();
+  else window.addEventListener("homepage:experience-ready", startSectionTransitions, { once: true });
 </script>

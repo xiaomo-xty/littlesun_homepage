@@ -19,7 +19,7 @@ export const site = {
 
 export const primaryLinks: SiteLink[] = [
   { label: "博客", href: site.blog, external: true },
-  { label: "GitHub 待补充", href: null },
+  { label: "GitHub", href: "https://github.com/xiaomo-xty", external: true },
   { label: "简历待补充", href: null },
   { label: "邮箱待补充", href: null },
 ];

@@ -1,9 +1,17 @@
 ---
-import ArticleList from "../components/ArticleList.astro";
+import {
+  ArrowUpRightIcon,
+  BookOpenTextIcon,
+  EnvelopeSimpleIcon,
+  FileTextIcon,
+  GithubLogoIcon,
+} from "@phosphor-icons/react";
+import ArticleList from "../components/ArticleList";
 import HeroSection from "../components/HeroSection.astro";
 import ProjectStage from "../components/ProjectStage.astro";
+import SectionGuide from "../components/SectionGuide";
 import SiteHeader from "../components/SiteHeader.astro";
-import { primaryLinks, site } from "../data/site";
+import { site } from "../data/site";
 import BaseLayout from "../layouts/BaseLayout.astro";
 import "../styles/home.css";
 ---
@@ -13,85 +21,134 @@ import "../styles/home.css";
   <main id="main-content">
     <HeroSection />
 
-    <section id="about" class="shell about-section" data-reveal="about">
-      <div class="section-heading">
+    <section id="about" class="shell about-section" data-reveal="about" data-motion-group>
+      <div class="section-heading" data-motion-item data-motion-kind="section-heading">
         <h2>我在做什么</h2>
         <p>职业主轴是高性能图形、游戏引擎工具与跨平台系统。技术不是标签，而是我处理问题的方式。</p>
       </div>
 
       <div class="about-grid">
-        <article>
+        <article data-motion-item data-motion-kind="about-card">
           <h3>经历</h3>
           <p>维护 C++ 商业代码，接触 PDF 页面对象、图片编解码、数据路径与故障处理。</p>
         </article>
-        <article>
+        <article data-motion-item data-motion-kind="about-card">
           <h3>关注</h3>
           <p>资源如何进入渲染管线，平台差异如何被隔离，性能问题如何留下证据。</p>
         </article>
-        <article>
+        <article data-motion-item data-motion-kind="about-card">
           <h3>做事方式</h3>
           <p>从现象到最小复现，再用测试、分析和文档把修复变成可复用经验。</p>
         </article>
       </div>
 
       <div class="skill-axis" aria-label="技术成长方向">
-        <span class="axis-line" aria-hidden="true"></span>
-        <div><i></i><strong>C++</strong></div>
-        <div><i></i><strong>Rust</strong></div>
-        <div><i></i><strong>图形 / wgpu</strong></div>
-        <div><i></i><strong>跨平台</strong></div>
+        <span class="axis-line" aria-hidden="true" data-motion-item data-motion-kind="axis-line"></span>
+        <div data-motion-item data-motion-kind="axis-node"><i></i><strong>C++</strong></div>
+        <div data-motion-item data-motion-kind="axis-node"><i></i><strong>Rust</strong></div>
+        <div data-motion-item data-motion-kind="axis-node"><i></i><strong>图形 / wgpu</strong></div>
+        <div data-motion-item data-motion-kind="axis-node"><i></i><strong>跨平台</strong></div>
       </div>
+      <SectionGuide target="#projects" label="前往代表项目" />
     </section>
 
-    <div class="technology-ribbon" aria-label="技术方向" data-reveal="technology">
-      <div class="shell pixel-type">
-        C++&nbsp;&nbsp; RUST&nbsp;&nbsp; WGPU&nbsp;&nbsp; WEBGPU&nbsp;&nbsp; WASM&nbsp;&nbsp; GRAPHICS&nbsp;&nbsp; TOOLING&nbsp;&nbsp; CROSS-PLATFORM
-      </div>
-    </div>
-
     <ProjectStage />
-    <ArticleList />
+    <ArticleList client:visible />
 
-    <section id="life" class="shell life-section" data-reveal="life">
-      <h2>屏幕之外</h2>
-      <p>我喜欢 Minecraft 的开放玩法、塞尔达的探索感、三体的科幻尺度，也被动画与绘画中的光、材质和叙事节奏吸引。</p>
-      <div class="interest-line" aria-label="生活兴趣">
+    <section id="life" class="shell life-section" data-reveal="life" data-motion-group>
+      <h2 data-motion-item data-motion-kind="section-heading">屏幕之外</h2>
+      <p data-motion-item data-motion-kind="life-copy">我喜欢 Minecraft 的开放玩法、塞尔达的探索感、三体的科幻尺度，也被动画与绘画中的光、材质和叙事节奏吸引。</p>
+      <div class="interest-line" aria-label="生活兴趣" data-motion-item data-motion-kind="life-copy">
         <span>像素世界</span><span>探索</span><span>科幻</span><span>动画</span><span>游戏</span>
       </div>
 
       <div class="life-gallery" aria-label="生活照片占位">
-        <figure><div>真实照片占位 / 日常观察</div></figure>
-        <figure><div>真实照片占位 / 绘画与影像</div></figure>
-        <figure><div>真实照片占位 / 游戏与旅行</div></figure>
+        <figure data-motion-item data-motion-kind="life-frame"><div>真实照片占位 / 日常观察</div></figure>
+        <figure data-motion-item data-motion-kind="life-frame"><div>真实照片占位 / 绘画与影像</div></figure>
+        <figure data-motion-item data-motion-kind="life-frame"><div>真实照片占位 / 游戏与旅行</div></figure>
       </div>
-      <p class="replacement-note">替换为三张真实照片，保留自然构图和统一色调</p>
+      <p class="replacement-note" data-motion-item data-motion-kind="life-note">替换为三张真实照片，保留自然构图和统一色调</p>
+      <SectionGuide target="#contact" label="前往联系方式" />
     </section>
 
-    <section id="contact" class="contact-section" data-reveal="contact">
-      <div class="shell contact-inner">
-        <h2>来聊聊图形、工具和下一段工作。</h2>
-        <p>简历、GitHub 和邮箱将在提供真实地址后上线。</p>
-        <a class="command contact-command" href={site.blog} target="_blank" rel="noreferrer">博客</a>
+    <section id="contact" class="contact-section" data-reveal="contact" data-motion-group>
+      <div class="contact-current-field" aria-hidden="true">
+        <span class="contact-current contact-current-one"></span>
+        <span class="contact-current contact-current-two"></span>
+        <span class="contact-current contact-current-three"></span>
+        <span class="contact-signal-buoy"><i></i></span>
+        <span class="contact-signal-pixel contact-signal-pixel-one"></span>
+        <span class="contact-signal-pixel contact-signal-pixel-two"></span>
+        <span class="contact-signal-pixel contact-signal-pixel-three"></span>
+      </div>
 
-        <div class="contact-links">
-          {primaryLinks.filter((link) => link.label !== "博客").map((link) =>
-            link.href ? (
-              <a href={link.href} target={link.external ? "_blank" : undefined} rel={link.external ? "noreferrer" : undefined}>
-                {link.label}
-              </a>
-            ) : (
-              <span>[{link.label}]</span>
-            ),
-          )}
+      <div class="shell contact-inner">
+        <div class="contact-heading-grid">
+          <div class="contact-title-block" data-motion-item data-motion-kind="contact-title">
+            <p class="pixel-type">OPEN CHANNEL / 04</p>
+            <h2>来聊聊图形、工具和下一段工作。</h2>
+          </div>
+
+          <div class="contact-intro" data-motion-item data-motion-kind="contact-copy">
+            <span class="contact-status pixel-type"><i></i> GITHUB / BLOG ONLINE</span>
+            <p>GitHub 与博客已开放，简历和邮箱将在提供真实地址后上线。</p>
+          </div>
         </div>
 
-        <footer>
+        <div class="contact-channel-rail" aria-label="联系与阅读入口">
+          <a class="contact-channel contact-channel-featured" href={site.blog} target="_blank" rel="noreferrer" data-motion-item data-motion-kind="contact-channel">
+            <span class="contact-channel-index pixel-type">01</span>
+            <span class="contact-channel-icon"><BookOpenTextIcon size={26} weight="regular" /></span>
+            <span class="contact-channel-copy">
+              <small>BLOG</small>
+              <strong>阅读项目记录与技术文章</strong>
+              <em>blog.littlesun.space</em>
+            </span>
+            <ArrowUpRightIcon className="contact-channel-arrow" size={24} weight="bold" />
+          </a>
+
+          <a class="contact-channel" href="https://github.com/xiaomo-xty" target="_blank" rel="noreferrer" data-motion-item data-motion-kind="contact-channel">
+            <span class="contact-channel-index pixel-type">02</span>
+            <span class="contact-channel-icon"><GithubLogoIcon size={24} weight="regular" /></span>
+            <span class="contact-channel-copy">
+              <small>GITHUB</small>
+              <strong>xiaomo-xty</strong>
+              <em>代码与开源协作</em>
+            </span>
+            <ArrowUpRightIcon className="contact-channel-arrow" size={22} weight="bold" />
+          </a>
+
+          <div class="contact-channel is-pending" role="group" aria-label="简历待补充" data-motion-item data-motion-kind="contact-channel">
+            <span class="contact-channel-index pixel-type">03</span>
+            <span class="contact-channel-icon"><FileTextIcon size={24} weight="regular" /></span>
+            <span class="contact-channel-copy">
+              <small>RESUME</small>
+              <strong>简历待补充</strong>
+              <em>等待真实文件</em>
+            </span>
+            <span class="contact-pending-mark pixel-type">PENDING</span>
+          </div>
+
+          <div class="contact-channel is-pending" role="group" aria-label="邮箱待补充" data-motion-item data-motion-kind="contact-channel">
+            <span class="contact-channel-index pixel-type">04</span>
+            <span class="contact-channel-icon"><EnvelopeSimpleIcon size={24} weight="regular" /></span>
+            <span class="contact-channel-copy">
+              <small>EMAIL</small>
+              <strong>邮箱待补充</strong>
+              <em>等待真实地址</em>
+            </span>
+            <span class="contact-pending-mark pixel-type">PENDING</span>
+          </div>
+        </div>
+
+        <footer data-motion-item data-motion-kind="contact-footer">
           <strong>{site.title}</strong>
           <span>{site.domain}</span>
           <a class="filing-link" href="https://beian.miit.gov.cn/" target="_blank" rel="noreferrer">
             {site.icpBeian}
           </a>
         </footer>
+        <SectionGuide target="#top" label="返回页面顶部" direction="up" />
       </div>
     </section>
   </main>

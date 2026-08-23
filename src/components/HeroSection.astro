@@ -1,12 +1,14 @@
 ---
 import { ArrowUpRightIcon } from "@phosphor-icons/react";
 import { primaryLinks, site } from "../data/site";
+import HeroVisualStage from "./HeroVisualStage";
+import SectionGuide from "./SectionGuide";
 import TypewriterLine from "./TypewriterLine";
 ---
 
-<section id="top" class="hero-section" data-reveal="hero">
+<section id="top" class="hero-section" data-reveal="hero" data-motion-group>
   <div class="shell hero-grid">
-    <div class="hero-copy">
+    <div class="hero-copy" data-motion-item data-motion-kind="hero-copy">
       <p class="direction-line"><TypewriterLine client:load /></p>
       <h1>{site.title}</h1>
       <p class="hero-intro">{site.introduction}</p>
@@ -41,17 +43,9 @@ import TypewriterLine from "./TypewriterLine";
       </div>
     </div>
 
-    <figure class="portrait-stack">
-      <span class="portrait-layer portrait-layer-back" aria-hidden="true"></span>
-      <span class="portrait-layer portrait-layer-mid" aria-hidden="true"></span>
-      <div class="portrait-placeholder">
-        <span class="pixel-corner corner-nw" aria-hidden="true"></span>
-        <span class="pixel-corner corner-ne" aria-hidden="true"></span>
-        <span class="pixel-corner corner-sw" aria-hidden="true"></span>
-        <span class="pixel-corner corner-se" aria-hidden="true"></span>
-        <span>真实人像 / 工作现场 / 个人作品图</span>
-      </div>
-      <figcaption>替换为真实素材，保持人物或作品完整可辨</figcaption>
-    </figure>
+    <div class="hero-stage-entrance" data-hero-stage-entrance data-motion-item data-motion-kind="hero-stage">
+      <HeroVisualStage client:load />
+    </div>
   </div>
+  <SectionGuide target="#about" label="前往关于我" />
 </section>
