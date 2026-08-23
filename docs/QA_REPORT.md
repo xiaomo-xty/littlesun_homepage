@@ -863,3 +863,35 @@ v0.7 满足海洋静物、双主题眼睛修正、固定时间步、WebGPU 优�
 - `git diff --check`：通过。
 - `bun run build`：2 个静态路由构建成功。
 - 未修改 `D:\project\blog`。
+
+## 2026-08-23 / v0.20 区块引导与水母蓄力冲击验收
+
+### 动效与导航
+
+- Hero 文案、个人视觉舞台和引导分别拥有 `hidden` 与 `visible` 姿态，滚回首屏后重复显现。
+- 页面包含 6 个 `SectionGuide`，目标依次为 `#about`、`#projects`、`#articles`、`#life`、`#contact` 和 `#top`。
+- 每个引导都具备 `aria-label` 和 `title`，使用现有 Phosphor 图标，没有增加文字式滚动提示。
+- `charge` 阶段的正文容器尚未移动；`impulse` 阶段才建立正文、海流和水母的同步上移。
+- 钟形体、触手、光环和页面只动画 `transform` 与 `opacity`。
+- 低动态路径继续使用 `220 ms` 淡入，新增循环提示会被全局低动态规则关闭。
+
+### 浏览器矩阵
+
+| 场景 | 结果 |
+| --- | --- |
+| 1440 x 900 / WebGPU / 深色 | `ready / complete`，Hero 引导位于首屏底部，文案与视觉舞台无重叠 |
+| WebGPU / 浅色 | 页面基底为 `#f7f8f6`，引导使用深灰蓝前景，保持清晰可见 |
+| Hero 滚出并返回 | 文章区时为 `hidden`，返回顶部后文案、舞台、引导均为 `visible` |
+| 六段翻页链路 | 六个哈希和目标区块状态均正确，联系区可返回 `#top` |
+| 390 x 844 / WebGPU / 深色 | 6 个引导存在，Hero 引导在正常文档流中，不遮挡内容 |
+| 390 x 844 / WebGL2 | `webgl2 / ready / complete`，6 个引导存在，无横向溢出 |
+| 390 x 844 / static | `static / ready / complete`，6 个引导存在，无横向溢出 |
+| 控制台 | WebGPU 与 static 均无 warning 或 error |
+
+### 自动化与质量门禁
+
+- `bun test`：38 passed、0 failed。
+- `bun run check`：0 errors、0 warnings、0 hints。
+- `git diff --check`：通过。
+- `bun run build`：2 个静态路由构建成功。
+- 未修改 `D:\project\blog`。

@@ -9,6 +9,7 @@ import {
 import ArticleList from "../components/ArticleList";
 import HeroSection from "../components/HeroSection.astro";
 import ProjectStage from "../components/ProjectStage.astro";
+import SectionGuide from "../components/SectionGuide";
 import SiteHeader from "../components/SiteHeader.astro";
 import { site } from "../data/site";
 import BaseLayout from "../layouts/BaseLayout.astro";
@@ -48,6 +49,7 @@ import "../styles/home.css";
         <div data-motion-item data-motion-kind="axis-node"><i></i><strong>图形 / wgpu</strong></div>
         <div data-motion-item data-motion-kind="axis-node"><i></i><strong>跨平台</strong></div>
       </div>
+      <SectionGuide target="#projects" label="前往代表项目" />
     </section>
 
     <ProjectStage />
@@ -66,6 +68,7 @@ import "../styles/home.css";
         <figure data-motion-item data-motion-kind="life-frame"><div>真实照片占位 / 游戏与旅行</div></figure>
       </div>
       <p class="replacement-note" data-motion-item data-motion-kind="life-note">替换为三张真实照片，保留自然构图和统一色调</p>
+      <SectionGuide target="#contact" label="前往联系方式" />
     </section>
 
     <section id="contact" class="contact-section" data-reveal="contact" data-motion-group>
@@ -145,6 +148,7 @@ import "../styles/home.css";
             {site.icpBeian}
           </a>
         </footer>
+        <SectionGuide target="#top" label="返回页面顶部" direction="up" />
       </div>
     </section>
   </main>

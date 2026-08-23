@@ -379,6 +379,73 @@ main {
   overflow: clip;
 }
 
+.section-guide {
+  position: relative;
+  z-index: 5;
+  display: grid;
+  min-height: 62px;
+  place-items: center;
+  margin-top: clamp(52px, 7vw, 92px);
+}
+
+.section-guide a {
+  position: relative;
+  display: grid;
+  width: 48px;
+  height: 58px;
+  place-items: center;
+  color: var(--muted);
+  text-decoration: none;
+  transition: color 180ms ease;
+}
+
+.section-guide a::before {
+  position: absolute;
+  bottom: 2px;
+  width: 42px;
+  height: 18px;
+  border-top: 1px solid color-mix(in srgb, var(--accent) 54%, transparent);
+  border-radius: 50%;
+  content: "";
+  opacity: 0.54;
+  transform: scaleX(0.72);
+  transition: opacity 180ms ease, transform 260ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.section-guide-signal {
+  display: grid;
+  place-items: center;
+  transform-origin: center;
+  animation: section-guide-drift 4.8s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+}
+
+.section-guide-signal svg + svg {
+  margin-top: -10px;
+  opacity: 0.46;
+}
+
+.section-guide.is-up .section-guide-signal {
+  transform: rotate(180deg);
+  animation-name: section-guide-drift-up;
+}
+
+.section-guide a:hover {
+  color: var(--accent-strong);
+}
+
+.section-guide a:hover::before {
+  opacity: 0.92;
+  transform: scaleX(1);
+}
+
+.hero-section > .section-guide {
+  position: absolute;
+  bottom: 4px;
+  left: 50%;
+  margin-top: 0;
+  transform: translateX(-50%);
+}
+
 .hero-grid {
   position: relative;
   z-index: 3;
@@ -2481,6 +2548,18 @@ a.contact-channel:hover .contact-channel-arrow {
   48% { opacity: 0; transform: translate3d(390%, 0, 0) rotate(24deg); }
 }
 
+@keyframes section-guide-drift {
+  0%, 18%, 100% { opacity: 0.56; transform: translate3d(0, -2px, 0); }
+  32% { opacity: 1; transform: translate3d(0, 5px, 0); }
+  48% { opacity: 0.72; transform: translate3d(0, 1px, 0); }
+}
+
+@keyframes section-guide-drift-up {
+  0%, 18%, 100% { opacity: 0.56; transform: translate3d(0, 2px, 0) rotate(180deg); }
+  32% { opacity: 1; transform: translate3d(0, -5px, 0) rotate(180deg); }
+  48% { opacity: 0.72; transform: translate3d(0, -1px, 0) rotate(180deg); }
+}
+
 @media (max-width: 767px) {
   .hero-copy::before {
     inset: -28px -34px;
@@ -2564,6 +2643,19 @@ a.contact-channel:hover .contact-channel-arrow {
     min-height: auto;
     gap: 18px;
     padding-block: 24px;
+  }
+
+  .hero-section > .section-guide {
+    position: relative;
+    bottom: auto;
+    left: auto;
+    margin-top: 24px;
+    transform: none;
+  }
+
+  .section-guide {
+    min-height: 54px;
+    margin-top: 52px;
   }
 
   .direction-line {

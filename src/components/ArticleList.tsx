@@ -9,6 +9,7 @@ import {
 } from "motion/react";
 import { useState, type PointerEvent } from "react";
 import { articles, type Article } from "../data/articles";
+import SectionGuide from "./SectionGuide";
 
 const revealEase = [0.16, 1, 0.3, 1] as const;
 
@@ -124,7 +125,7 @@ export default function ArticleList() {
   const reduceMotion = Boolean(useReducedMotion());
 
   return (
-    <section id="articles" className="shell articles-section">
+    <section id="articles" className="shell articles-section" data-reveal="articles" data-motion-group>
       <motion.div
         className="section-heading"
         initial={reduceMotion ? false : { opacity: 0, y: 24, scale: 0.985 }}
@@ -141,6 +142,7 @@ export default function ArticleList() {
           <ArticleRow key={article.title} article={article} index={index} />
         ))}
       </div>
+      <SectionGuide target="#life" label="前往生活侧面" />
     </section>
   );
 }

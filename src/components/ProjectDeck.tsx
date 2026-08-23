@@ -17,6 +17,7 @@ import {
 } from "motion/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { projects, type Project } from "../data/projects";
+import SectionGuide from "./SectionGuide";
 import { sampleIdleParallax } from "../lib/idleParallax";
 
 type Filter = "all" | Project["category"];
@@ -676,6 +677,7 @@ export default function ProjectDeck() {
           <p className="sr-only" aria-live="polite">当前作品：{sideboardProject.title}，{busy ? "正在抽取" : "正面已展示"}</p>
         </div>
       </div>
+      <SectionGuide target="#articles" label="前往代表文章" />
     </section>
   );
 }
