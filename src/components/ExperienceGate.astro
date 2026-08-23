@@ -47,7 +47,6 @@
     const startedAt = performance.now();
     const minimumWait = reducedMotion ? 120 : 820;
     let started = false;
-    let fallbackTimer = 0;
 
     const wait = (duration) => new Promise((resolve) => window.setTimeout(resolve, duration));
     const nextFrames = (count = 2) => new Promise((resolve) => {
@@ -350,7 +349,6 @@
     const startReveal = async (fast = false) => {
       if (started) return;
       started = true;
-      window.clearTimeout(fallbackTimer);
       if (fast) root.dataset.ambientFallback = "true";
       const remainingWait = Math.max(0, minimumWait - (performance.now() - startedAt));
       await wait(remainingWait);
@@ -359,9 +357,8 @@
       else await runJellyTowReveal(fast);
     };
 
-    window.addEventListener("homepage:ambient-ready", () => void startReveal(), { once: true });
-    fallbackTimer = window.setTimeout(() => void startReveal(true), 4800);
-    if (root.dataset.ambientReady === "true") void startReveal();
+    // The static ocean is already in the SSR shell. WebGPU can take over independently.
+    void startReveal();
   })();
 </script>
 

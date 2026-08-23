@@ -16,6 +16,7 @@ import {
   sampleLocalLightInfluence,
   sampleJellyPose,
   sampleOceanFlow,
+  scheduleCappedRender,
   scheduleFixedSimulation,
   wrapDriftingBody,
   type CollisionResult,
@@ -77,6 +78,7 @@ type OceanEntity = SolidBodyState & {
   restRotation: number;
   age: number;
   colorShift: number;
+  receivedLight: number;
 };
 
 type MarineRelicKind = "sea-bloom" | "sea-glass" | "coral";
@@ -97,6 +99,7 @@ type OceanParticle = {
   size: number;
   phase: number;
   speed: number;
+  receivedLight: number;
 };
 
 type ParticleLayer = {
@@ -243,8 +246,9 @@ export default function AmbientWorld() {
     host.dataset.entitySpeedMax = "0";
     host.dataset.jellySpeedMax = "0";
     host.dataset.coralAngleDeviation = "0";
-    host.dataset.simulationStep = "60hz";
-    host.dataset.telemetryRate = "4hz";
+      host.dataset.simulationStep = "60hz";
+      host.dataset.telemetryRate = "4hz";
+      host.dataset.detailRate = "static";
     host.dataset.entityCount = "0";
     host.dataset.organismCount = "0";
     document.documentElement.dataset.ambientBackend = "static";
@@ -295,6 +299,7 @@ export default function AmbientWorld() {
       const backendName = backend.isWebGPUBackend ? "webgpu" : backend.isWebGLBackend ? "webgl2" : "static";
       host.dataset.backend = backendName;
       host.dataset.quality = balanced || backendName === "webgl2" ? "balanced" : "full";
+      host.dataset.detailRate = balanced ? "15hz" : "20hz";
       document.documentElement.dataset.ambientBackend = backendName;
 
       const scene = new THREE.Scene();
@@ -309,7 +314,9 @@ export default function AmbientWorld() {
       const viewHalfHeight = 5;
       let frame = 0;
       let lastTime = performance.now();
+      let lastRenderedAt: number | null = null;
       let pageVisible = !document.hidden;
+      let motionAllowed = !reduceMotion.matches;
       let safeZones: SafeZone[] = [];
       let currentProfile = { ...defaultProfile };
       let targetProfile = { ...defaultProfile };
@@ -318,6 +325,8 @@ export default function AmbientWorld() {
       let simulationAccumulator = 0;
       let simulationTick = 0;
       let telemetryNextAt = 0;
+      let ambientDetailNextAt = 0;
+      const ambientDetailInterval = balanced ? 1000 / 15 : 1000 / 20;
       let lightTheme = true;
       const pulseOrigin = new THREE.Vector2();
 
@@ -446,6 +455,7 @@ export default function AmbientWorld() {
             size: 0.62 + random() * 0.88,
             phase: random() * Math.PI * 2,
             speed: 0.035 + random() * 0.12,
+            receivedLight: 0,
           };
         }).map((particle) => {
           particle.previousX = particle.x;
@@ -887,6 +897,7 @@ export default function AmbientWorld() {
           restRotation: rotation,
           age: 0,
           colorShift: random() * 2 - 1,
+          receivedLight: 0,
         };
         entities.push(entity);
         return entity;
@@ -1154,6 +1165,7 @@ export default function AmbientWorld() {
           entity.lightField?.material.color.copy(lightTheme ? palette.accentStrong : palette.accent)
             .offsetHSL(hue, -0.01, Math.max(0, lightness));
         });
+        ambientDetailNextAt = 0;
       };
 
       const updateSafeZones = () => {
@@ -1341,7 +1353,6 @@ export default function AmbientWorld() {
         });
 
         localLightSources.length = lightCount;
-        host.dataset.lightSourceCount = String(lightCount);
       };
 
       const simulateEntities = (seconds: number, delta: number) => {
@@ -1445,7 +1456,7 @@ export default function AmbientWorld() {
         });
       };
 
-      const renderEntities = (seconds: number, alpha: number) => {
+      const renderEntities = (seconds: number, alpha: number, refreshLighting: boolean) => {
         entities.forEach((entity) => {
           const breathe = 1 + Math.sin(seconds * 0.42 + entity.phase) * 0.022 + entity.hit * 0.06;
           const coralSway = entity.relic === "coral" ? Math.sin(seconds * 0.52 + entity.phase) * 0.012 : 0;
@@ -1461,7 +1472,10 @@ export default function AmbientWorld() {
           const lightness = entity.colorShift * 0.02;
           const coral = entity.relic === "coral";
           const coralTint = coral ? 0.1 + (entity.colorShift + 1) * 0.035 : 0;
-          const receivedLight = sampleLocalLightInfluence(entity.group.position, localLightSources, 0.78);
+          if (refreshLighting) {
+            entity.receivedLight = sampleLocalLightInfluence(entity.group.position, localLightSources, 0.78);
+          }
+          const receivedLight = entity.receivedLight;
           entity.fill.color.copy(palette.surface)
             .lerp(palette.accentStrong, coralTint)
             .offsetHSL(hue, -0.016, lightness)
@@ -1826,7 +1840,7 @@ export default function AmbientWorld() {
         });
       };
 
-      const renderParticles = (seconds: number, alpha: number) => {
+      const renderParticles = (seconds: number, alpha: number, refreshLighting: boolean) => {
         particleLayers.forEach((layer) => {
           layer.particles.forEach((particle, index) => {
             const twinkle = 0.68 + Math.sin(seconds * (0.72 + particle.speed) + particle.phase) * 0.28;
@@ -1839,36 +1853,40 @@ export default function AmbientWorld() {
             sharedMatrix.makeScale(scale, scale, scale);
             sharedMatrix.setPosition(renderX, renderY, particle.z);
             layer.mesh.setMatrixAt(index, sharedMatrix);
-            sharedColor.copy(lightTheme ? palette.surface : palette.ink).lerp(
-              palette.accent,
-              Math.min(1, 0.32 + particle.depthOpacity * 0.92),
-            );
-            sharedColor.lerp(palette.accentStrong, Math.max(0, twinkle - 0.5) * 0.42);
-            sharedLightPosition.set(renderX, renderY);
-            const receivedLight = sampleLocalLightInfluence(sharedLightPosition, localLightSources, 0.72);
-            sharedColor.lerp(
-              palette.surface,
-              receivedLight * (lightTheme ? 0.12 : 0.48),
-            );
-            layer.mesh.setColorAt(index, sharedColor);
+            if (refreshLighting) {
+              sharedColor.copy(lightTheme ? palette.surface : palette.ink).lerp(
+                palette.accent,
+                Math.min(1, 0.32 + particle.depthOpacity * 0.92),
+              );
+              sharedColor.lerp(palette.accentStrong, Math.max(0, twinkle - 0.5) * 0.42);
+              sharedLightPosition.set(renderX, renderY);
+              particle.receivedLight = sampleLocalLightInfluence(sharedLightPosition, localLightSources, 0.72);
+              sharedColor.lerp(
+                palette.surface,
+                particle.receivedLight * (lightTheme ? 0.12 : 0.48),
+              );
+              layer.mesh.setColorAt(index, sharedColor);
+            }
             if (layer.glowMesh) {
               const glowScale = 0.26 + scale * (0.2 + twinkle * 0.035);
               sharedMatrix.makeScale(glowScale, glowScale, 1);
               sharedMatrix.setPosition(renderX, renderY, particle.z - 0.012);
               layer.glowMesh.setMatrixAt(index, sharedMatrix);
-              sharedColor.lerp(palette.surface, lightTheme ? 0.1 : 0.24);
-              layer.glowMesh.setColorAt(index, sharedColor);
+              if (refreshLighting) {
+                sharedColor.lerp(palette.surface, lightTheme ? 0.1 : 0.24);
+                layer.glowMesh.setColorAt(index, sharedColor);
+              }
             }
           });
           layer.mesh.instanceMatrix.needsUpdate = true;
-          if (layer.mesh.instanceColor) layer.mesh.instanceColor.needsUpdate = true;
+          if (refreshLighting && layer.mesh.instanceColor) layer.mesh.instanceColor.needsUpdate = true;
           const representativeDepth = (layer.depthRange[0] + layer.depthRange[1]) * 0.5;
           const representativeProfile = sampleAmbientDepth(representativeDepth);
           layer.material.opacity = representativeProfile.opacity
             * (balanced ? 0.55 : 0.62) * (0.7 + currentProfile.particle * 0.3);
           if (layer.glowMesh && layer.glowMaterial) {
             layer.glowMesh.instanceMatrix.needsUpdate = true;
-            if (layer.glowMesh.instanceColor) layer.glowMesh.instanceColor.needsUpdate = true;
+            if (refreshLighting && layer.glowMesh.instanceColor) layer.glowMesh.instanceColor.needsUpdate = true;
             layer.glowMaterial.opacity = (lightTheme ? 0.03 : 0.14)
               * representativeProfile.opacity
               * (0.72 + currentProfile.particle * 0.28);
@@ -1923,7 +1941,13 @@ export default function AmbientWorld() {
       };
 
       const render = (time: number) => {
-        if (destroyed || !pageVisible) return;
+        if (destroyed || !pageVisible || !motionAllowed) return;
+        const renderSchedule = scheduleCappedRender(lastRenderedAt, time);
+        lastRenderedAt = renderSchedule.renderedAt;
+        if (!renderSchedule.shouldRender) {
+          frame = window.requestAnimationFrame(render);
+          return;
+        }
         const frameDelta = Math.max(0, (time - lastTime) / 1000);
         lastTime = time;
         const schedule = scheduleFixedSimulation(simulationAccumulator, frameDelta);
@@ -1936,6 +1960,8 @@ export default function AmbientWorld() {
           0,
           simulationClock - AMBIENT_FIXED_STEP + schedule.alpha * AMBIENT_FIXED_STEP,
         );
+        const refreshAmbientDetail = time >= ambientDetailNextAt;
+        if (refreshAmbientDetail) ambientDetailNextAt = time + ambientDetailInterval;
         if (time >= telemetryNextAt) {
           telemetryNextAt = time + 250;
           host.dataset.simulationTick = String(simulationTick);
@@ -1955,16 +1981,17 @@ export default function AmbientWorld() {
             ));
             return Math.max(maximum, deviation);
           }, 0).toFixed(3);
+          host.dataset.lightSourceCount = String(localLightSources.length);
         }
         if (schedule.droppedDelta > 0) {
           host.dataset.droppedTimeMs = schedule.droppedDelta.toFixed(3);
         }
         updateLocalLightFields(renderSeconds, schedule.alpha);
-        updateFlowRibbons(renderSeconds * 1000);
-        renderEntities(renderSeconds, schedule.alpha);
+        if (refreshAmbientDetail) updateFlowRibbons(renderSeconds * 1000);
+        renderEntities(renderSeconds, schedule.alpha, refreshAmbientDetail);
         renderDolphin(schedule.alpha);
         renderJellies(renderSeconds, schedule.alpha);
-        renderParticles(renderSeconds, schedule.alpha);
+        renderParticles(renderSeconds, schedule.alpha, refreshAmbientDetail);
         renderer.render(scene, camera);
         if (!hasRendered) {
           signalAmbientReady();
@@ -1975,8 +2002,9 @@ export default function AmbientWorld() {
 
       const ensureRunning = () => {
         window.cancelAnimationFrame(frame);
-        if (!pageVisible || destroyed) return;
+        if (!pageVisible || !motionAllowed || destroyed) return;
         lastTime = performance.now();
+        lastRenderedAt = null;
         simulationAccumulator = 0;
         frame = window.requestAnimationFrame(render);
       };
@@ -2033,6 +2061,12 @@ export default function AmbientWorld() {
         ensureRunning();
       };
 
+      const handleMotionPreference = () => {
+        motionAllowed = !reduceMotion.matches;
+        host.dataset.motion = motionAllowed ? "full" : "reduced";
+        ensureRunning();
+      };
+
       const resizeObserver = new ResizeObserver(resize);
       const themeObserver = new MutationObserver(applyTheme);
       resizeObserver.observe(host);
@@ -2043,8 +2077,10 @@ export default function AmbientWorld() {
       window.addEventListener("homepage:section-presence", handleSectionPresence);
       window.addEventListener("homepage:project-pulse", handleProjectPulse);
       document.addEventListener("visibilitychange", handleVisibility);
+      reduceMotion.addEventListener("change", handleMotionPreference);
 
       applyTheme();
+      handleMotionPreference();
       resize();
       ensureRunning();
 
@@ -2058,6 +2094,7 @@ export default function AmbientWorld() {
         window.removeEventListener("homepage:section-presence", handleSectionPresence);
         window.removeEventListener("homepage:project-pulse", handleProjectPulse);
         document.removeEventListener("visibilitychange", handleVisibility);
+        reduceMotion.removeEventListener("change", handleMotionPreference);
         scene.clear();
         resources.forEach((resource) => resource.dispose());
         renderer.dispose();
@@ -2097,6 +2134,9 @@ export default function AmbientWorld() {
       data-jelly-speed-max="0"
       data-coral-angle-deviation="0"
       data-simulation-step="60hz"
+      data-render-cap="60fps"
+      data-detail-rate="static"
+      data-motion="full"
       data-entity-count="0"
       data-organism-count="0"
       aria-hidden="true"

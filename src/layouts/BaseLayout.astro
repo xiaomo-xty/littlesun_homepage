@@ -1,7 +1,7 @@
 ---
 import "../styles/global.css";
 import { site } from "../data/site";
-import AmbientWorld from "../components/AmbientWorld";
+import AmbientWorldLoader from "../components/AmbientWorldLoader.astro";
 import ExperienceGate from "../components/ExperienceGate.astro";
 import SectionTransitions from "../components/SectionTransitions.astro";
 
@@ -45,7 +45,7 @@ const canonical = new URL(Astro.url.pathname, Astro.site);
     </script>
   </head>
   <body>
-    <AmbientWorld client:load />
+    <AmbientWorldLoader />
     <div class="site-content" data-site-content>
       <a class="skip-link" href="#main-content">跳到主要内容</a>
       <slot />
