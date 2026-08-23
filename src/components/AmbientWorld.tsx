@@ -631,7 +631,7 @@ export default function AmbientWorld() {
       const entities: OceanEntity[] = [];
       const collisionResult: CollisionResult = { collided: false, impact: 0, nx: 0, ny: 0 };
 
-      const createEntityShape = (kind: SolidKind, radius: number) => {
+      const createEntityShape = (kind: SolidKind, radius: number, variant = 0) => {
         const shape = new THREE.Shape();
         if (kind === "circle") {
           const samples = balanced ? 40 : 64;
@@ -654,27 +654,59 @@ export default function AmbientWorld() {
           shape.bezierCurveTo(radius * 0.66, -radius * 0.5, radius * 0.88, -radius * 0.2, radius * 0.78, radius * 0.2);
           shape.bezierCurveTo(radius * 0.66, radius * 0.56, radius * 0.18, radius * 0.64, -radius * 0.28, radius * 0.56);
           shape.bezierCurveTo(-radius * 0.72, radius * 0.48, -radius * 0.9, radius * 0.14, -radius * 0.78, -radius * 0.22);
+        } else if (variant % 3 === 0) {
+          // A broad sea fan reads through its branching veins, even at low opacity.
+          shape.moveTo(-radius * 0.14, -radius * 0.84);
+          shape.bezierCurveTo(-radius * 0.24, -radius * 0.54, -radius * 0.42, -radius * 0.29, -radius * 0.67, -radius * 0.12);
+          shape.bezierCurveTo(-radius * 0.91, radius * 0.04, -radius * 0.9, radius * 0.34, -radius * 0.71, radius * 0.47);
+          shape.bezierCurveTo(-radius * 0.58, radius * 0.58, -radius * 0.43, radius * 0.53, -radius * 0.33, radius * 0.43);
+          shape.bezierCurveTo(-radius * 0.28, radius * 0.69, -radius * 0.08, radius * 0.82, radius * 0.04, radius * 0.56);
+          shape.bezierCurveTo(radius * 0.13, radius * 0.77, radius * 0.31, radius * 0.77, radius * 0.38, radius * 0.51);
+          shape.bezierCurveTo(radius * 0.54, radius * 0.67, radius * 0.76, radius * 0.56, radius * 0.71, radius * 0.34);
+          shape.bezierCurveTo(radius * 0.91, radius * 0.24, radius * 0.87, -radius * 0.04, radius * 0.67, -radius * 0.15);
+          shape.bezierCurveTo(radius * 0.45, -radius * 0.31, radius * 0.29, -radius * 0.55, radius * 0.16, -radius * 0.84);
+          shape.bezierCurveTo(radius * 0.08, -radius * 0.9, -radius * 0.05, -radius * 0.9, -radius * 0.14, -radius * 0.84);
+        } else if (variant % 3 === 1) {
+          // A staghorn silhouette uses asymmetric forks instead of a hand-like lobe cluster.
+          shape.moveTo(-radius * 0.2, -radius * 0.84);
+          shape.bezierCurveTo(-radius * 0.22, -radius * 0.57, -radius * 0.26, -radius * 0.34, -radius * 0.29, -radius * 0.14);
+          shape.bezierCurveTo(-radius * 0.45, -radius * 0.16, -radius * 0.58, -radius * 0.1, -radius * 0.69, radius * 0.02);
+          shape.bezierCurveTo(-radius * 0.8, radius * 0.14, -radius * 0.66, radius * 0.28, -radius * 0.54, radius * 0.19);
+          shape.bezierCurveTo(-radius * 0.44, radius * 0.11, -radius * 0.37, radius * 0.04, -radius * 0.29, radius * 0.07);
+          shape.bezierCurveTo(-radius * 0.34, radius * 0.26, -radius * 0.29, radius * 0.48, -radius * 0.17, radius * 0.66);
+          shape.bezierCurveTo(-radius * 0.08, radius * 0.82, radius * 0.08, radius * 0.78, radius * 0.08, radius * 0.61);
+          shape.bezierCurveTo(radius * 0.08, radius * 0.48, radius * 0.06, radius * 0.37, radius * 0.08, radius * 0.27);
+          shape.bezierCurveTo(radius * 0.25, radius * 0.38, radius * 0.43, radius * 0.42, radius * 0.57, radius * 0.36);
+          shape.bezierCurveTo(radius * 0.72, radius * 0.29, radius * 0.68, radius * 0.1, radius * 0.53, radius * 0.08);
+          shape.bezierCurveTo(radius * 0.41, radius * 0.06, radius * 0.29, radius * 0.11, radius * 0.17, radius * 0.13);
+          shape.bezierCurveTo(radius * 0.33, -radius * 0.01, radius * 0.48, -radius * 0.13, radius * 0.55, -radius * 0.28);
+          shape.bezierCurveTo(radius * 0.63, -radius * 0.44, radius * 0.45, -radius * 0.54, radius * 0.34, -radius * 0.42);
+          shape.bezierCurveTo(radius * 0.23, -radius * 0.31, radius * 0.18, -radius * 0.18, radius * 0.16, -radius * 0.05);
+          shape.bezierCurveTo(radius * 0.15, -radius * 0.35, radius * 0.18, -radius * 0.61, radius * 0.17, -radius * 0.84);
+          shape.bezierCurveTo(radius * 0.08, -radius * 0.9, -radius * 0.1, -radius * 0.9, -radius * 0.2, -radius * 0.84);
         } else {
-          shape.moveTo(-radius * 0.2, -radius * 0.78);
-          shape.lineTo(radius * 0.16, -radius * 0.76);
-          shape.lineTo(radius * 0.15, -radius * 0.24);
-          shape.lineTo(radius * 0.48, -radius * 0.02);
-          shape.lineTo(radius * 0.66, -radius * 0.25);
-          shape.lineTo(radius * 0.82, -radius * 0.08);
-          shape.lineTo(radius * 0.52, radius * 0.26);
-          shape.lineTo(radius * 0.2, radius * 0.06);
-          shape.lineTo(radius * 0.08, radius * 0.74);
-          shape.lineTo(-radius * 0.16, radius * 0.7);
-          shape.lineTo(-radius * 0.2, radius * 0.2);
-          shape.lineTo(-radius * 0.52, radius * 0.5);
-          shape.lineTo(-radius * 0.72, radius * 0.3);
-          shape.lineTo(-radius * 0.42, 0);
-          shape.lineTo(-radius * 0.18, radius * 0.1);
+          // Tube coral is identified by uneven rounded stems and visible openings.
+          shape.moveTo(-radius * 0.52, -radius * 0.72);
+          shape.bezierCurveTo(-radius * 0.6, -radius * 0.5, -radius * 0.65, -radius * 0.24, -radius * 0.64, -radius * 0.03);
+          shape.bezierCurveTo(-radius * 0.63, radius * 0.13, -radius * 0.45, radius * 0.15, -radius * 0.4, radius * 0.02);
+          shape.bezierCurveTo(-radius * 0.37, -radius * 0.07, -radius * 0.39, -radius * 0.16, -radius * 0.37, -radius * 0.22);
+          shape.bezierCurveTo(-radius * 0.37, radius * 0.08, -radius * 0.38, radius * 0.39, -radius * 0.31, radius * 0.54);
+          shape.bezierCurveTo(-radius * 0.24, radius * 0.69, -radius * 0.07, radius * 0.66, -radius * 0.03, radius * 0.5);
+          shape.bezierCurveTo(radius * 0.01, radius * 0.34, -radius * 0.02, radius * 0.17, radius * 0.02, radius * 0.06);
+          shape.bezierCurveTo(radius * 0.02, radius * 0.35, radius * 0.02, radius * 0.66, radius * 0.11, radius * 0.77);
+          shape.bezierCurveTo(radius * 0.2, radius * 0.89, radius * 0.36, radius * 0.82, radius * 0.35, radius * 0.65);
+          shape.bezierCurveTo(radius * 0.34, radius * 0.51, radius * 0.27, radius * 0.34, radius * 0.3, radius * 0.22);
+          shape.bezierCurveTo(radius * 0.34, radius * 0.42, radius * 0.45, radius * 0.57, radius * 0.56, radius * 0.57);
+          shape.bezierCurveTo(radius * 0.69, radius * 0.57, radius * 0.75, radius * 0.4, radius * 0.67, radius * 0.29);
+          shape.bezierCurveTo(radius * 0.6, radius * 0.18, radius * 0.49, radius * 0.12, radius * 0.46, radius * 0.01);
+          shape.bezierCurveTo(radius * 0.52, -radius * 0.23, radius * 0.54, -radius * 0.5, radius * 0.45, -radius * 0.72);
+          shape.bezierCurveTo(radius * 0.23, -radius * 0.84, -radius * 0.29, -radius * 0.84, -radius * 0.52, -radius * 0.72);
         }
+        shape.closePath();
         return shape;
       };
 
-      const createEntityDetailGeometry = (kind: SolidKind, radius: number) => {
+      const createEntityDetailGeometry = (kind: SolidKind, radius: number, variant = 0) => {
         const points: THREE.Vector3[] = [];
         const segment = (x1: number, y1: number, x2: number, y2: number) => {
           points.push(
@@ -682,40 +714,53 @@ export default function AmbientWorld() {
             new THREE.Vector3(x2 * radius, y2 * radius, -0.012),
           );
         };
+        const cubicPoint = (
+          start: Vector2Like,
+          controlA: Vector2Like,
+          controlB: Vector2Like,
+          end: Vector2Like,
+          amount: number,
+        ) => {
+          const inverse = 1 - amount;
+          return {
+            x: inverse ** 3 * start.x
+              + 3 * inverse ** 2 * amount * controlA.x
+              + 3 * inverse * amount ** 2 * controlB.x
+              + amount ** 3 * end.x,
+            y: inverse ** 3 * start.y
+              + 3 * inverse ** 2 * amount * controlA.y
+              + 3 * inverse * amount ** 2 * controlB.y
+              + amount ** 3 * end.y,
+          };
+        };
+        const drawCubic = (
+          start: Vector2Like,
+          controlA: Vector2Like,
+          controlB: Vector2Like,
+          end: Vector2Like,
+        ) => {
+          let previous = start;
+          const samples = balanced ? 6 : 9;
+          for (let index = 1; index <= samples; index += 1) {
+            const current = cubicPoint(start, controlA, controlB, end, index / samples);
+            segment(previous.x, previous.y, current.x, current.y);
+            previous = current;
+          }
+        };
+        const ellipse = (centerX: number, centerY: number, radiusX: number, radiusY: number) => {
+          const samples = balanced ? 8 : 12;
+          let previousX = centerX + radiusX;
+          let previousY = centerY;
+          for (let index = 1; index <= samples; index += 1) {
+            const angle = index / samples * Math.PI * 2;
+            const currentX = centerX + Math.cos(angle) * radiusX;
+            const currentY = centerY + Math.sin(angle) * radiusY;
+            segment(previousX, previousY, currentX, currentY);
+            previousX = currentX;
+            previousY = currentY;
+          }
+        };
         if (kind === "circle") {
-          const cubicPoint = (
-            start: Vector2Like,
-            controlA: Vector2Like,
-            controlB: Vector2Like,
-            end: Vector2Like,
-            amount: number,
-          ) => {
-            const inverse = 1 - amount;
-            return {
-              x: inverse ** 3 * start.x
-                + 3 * inverse ** 2 * amount * controlA.x
-                + 3 * inverse * amount ** 2 * controlB.x
-                + amount ** 3 * end.x,
-              y: inverse ** 3 * start.y
-                + 3 * inverse ** 2 * amount * controlA.y
-                + 3 * inverse * amount ** 2 * controlB.y
-                + amount ** 3 * end.y,
-            };
-          };
-          const drawCubic = (
-            start: Vector2Like,
-            controlA: Vector2Like,
-            controlB: Vector2Like,
-            end: Vector2Like,
-          ) => {
-            let previous = start;
-            const samples = balanced ? 6 : 9;
-            for (let index = 1; index <= samples; index += 1) {
-              const current = cubicPoint(start, controlA, controlB, end, index / samples);
-              segment(previous.x, previous.y, current.x, current.y);
-              previous = current;
-            }
-          };
           const lengths = [0.88, 1, 0.82, 0.94, 0.76];
           const widths = [0.2, 0.23, 0.18, 0.21, 0.17];
           lengths.forEach((length, index) => {
@@ -742,10 +787,31 @@ export default function AmbientWorld() {
         } else if (kind === "rect") {
           segment(-0.45, 0.26, 0.38, 0.38);
           segment(-0.5, 0.12, 0.56, 0.25);
+        } else if (variant % 3 === 0) {
+          drawCubic({ x: 0, y: -0.72 }, { x: -0.03, y: -0.26 }, { x: -0.04, y: 0.19 }, { x: 0.03, y: 0.6 });
+          drawCubic({ x: -0.01, y: -0.42 }, { x: -0.19, y: -0.2 }, { x: -0.44, y: -0.02 }, { x: -0.68, y: 0.25 });
+          drawCubic({ x: -0.01, y: -0.2 }, { x: -0.24, y: 0.02 }, { x: -0.46, y: 0.25 }, { x: -0.54, y: 0.48 });
+          drawCubic({ x: 0, y: 0.02 }, { x: -0.17, y: 0.2 }, { x: -0.27, y: 0.39 }, { x: -0.27, y: 0.57 });
+          drawCubic({ x: 0, y: -0.33 }, { x: 0.22, y: -0.12 }, { x: 0.48, y: 0.05 }, { x: 0.69, y: 0.25 });
+          drawCubic({ x: 0.01, y: -0.11 }, { x: 0.23, y: 0.08 }, { x: 0.45, y: 0.26 }, { x: 0.52, y: 0.48 });
+          drawCubic({ x: 0.02, y: 0.1 }, { x: 0.18, y: 0.25 }, { x: 0.28, y: 0.41 }, { x: 0.31, y: 0.56 });
+          drawCubic({ x: -0.54, y: 0.17 }, { x: -0.28, y: 0.22 }, { x: 0.27, y: 0.22 }, { x: 0.55, y: 0.17 });
+          drawCubic({ x: -0.45, y: 0.39 }, { x: -0.18, y: 0.34 }, { x: 0.22, y: 0.35 }, { x: 0.45, y: 0.4 });
+        } else if (variant % 3 === 1) {
+          drawCubic({ x: -0.02, y: -0.7 }, { x: -0.05, y: -0.24 }, { x: -0.08, y: 0.28 }, { x: -0.07, y: 0.68 });
+          drawCubic({ x: -0.05, y: -0.17 }, { x: -0.24, y: -0.12 }, { x: -0.46, y: -0.03 }, { x: -0.67, y: 0.12 });
+          drawCubic({ x: -0.05, y: 0.1 }, { x: -0.23, y: 0.23 }, { x: -0.36, y: 0.32 }, { x: -0.49, y: 0.43 });
+          drawCubic({ x: 0, y: 0.23 }, { x: 0.2, y: 0.3 }, { x: 0.38, y: 0.32 }, { x: 0.57, y: 0.31 });
+          drawCubic({ x: 0.01, y: -0.06 }, { x: 0.22, y: -0.11 }, { x: 0.39, y: -0.2 }, { x: 0.52, y: -0.34 });
         } else {
-          segment(-0.02, -0.62, -0.02, 0.58);
-          segment(-0.02, -0.1, 0.52, 0.02);
-          segment(-0.04, 0.12, -0.48, 0.35);
+          drawCubic({ x: -0.49, y: -0.62 }, { x: -0.48, y: -0.35 }, { x: -0.52, y: -0.12 }, { x: -0.52, y: 0.02 });
+          drawCubic({ x: -0.29, y: -0.58 }, { x: -0.27, y: -0.13 }, { x: -0.28, y: 0.34 }, { x: -0.2, y: 0.52 });
+          drawCubic({ x: 0.03, y: -0.58 }, { x: 0.08, y: -0.07 }, { x: 0.11, y: 0.47 }, { x: 0.18, y: 0.73 });
+          drawCubic({ x: 0.31, y: -0.58 }, { x: 0.35, y: -0.2 }, { x: 0.39, y: 0.22 }, { x: 0.49, y: 0.48 });
+          ellipse(-0.52, 0.03, 0.095, 0.045);
+          ellipse(-0.2, 0.53, 0.105, 0.05);
+          ellipse(0.18, 0.74, 0.11, 0.052);
+          ellipse(0.49, 0.48, 0.1, 0.047);
         }
         return new THREE.BufferGeometry().setFromPoints(points);
       };
@@ -757,8 +823,9 @@ export default function AmbientWorld() {
         y: number,
         vx: number,
         vy: number,
+        variant = 0,
       ) => {
-        const geometry = register(new THREE.ShapeGeometry(createEntityShape(kind, radius), balanced ? 8 : 12));
+        const geometry = register(new THREE.ShapeGeometry(createEntityShape(kind, radius, variant), balanced ? 8 : 12));
         const fill = register(new THREE.MeshBasicMaterial({ transparent: true, side: THREE.DoubleSide, depthWrite: false }));
         const mesh = new THREE.Mesh(geometry, fill);
         const glow = kind === "triangle"
@@ -777,7 +844,7 @@ export default function AmbientWorld() {
         const edge = register(new THREE.LineBasicMaterial({ transparent: true, depthWrite: false }));
         const edges = new THREE.LineSegments(edgeGeometry, edge);
         const detail = register(new THREE.LineBasicMaterial({ transparent: true, depthWrite: false }));
-        const detailGeometry = register(createEntityDetailGeometry(kind, radius));
+        const detailGeometry = register(createEntityDetailGeometry(kind, radius, variant));
         const details = new THREE.LineSegments(detailGeometry, detail);
         const group = new THREE.Group();
         if (halo) {
@@ -824,7 +891,7 @@ export default function AmbientWorld() {
       };
 
       const initialEntityCount = balanced ? 6 : 8;
-      const kinds: SolidKind[] = ["rect", "circle", "triangle"];
+      const kinds: SolidKind[] = ["rect", "circle", "triangle", "rect", "triangle", "circle", "triangle", "rect"];
       const spawnSlots = [
         [-0.72, 0.58],
         [0.62, 0.5],
@@ -835,18 +902,21 @@ export default function AmbientWorld() {
         [0.78, -0.12],
         [0.12, -0.76],
       ] as const;
+      let coralVariant = 0;
       for (let index = 0; index < initialEntityCount; index += 1) {
         const radius = 0.2 + random() * (balanced ? 0.14 : 0.18);
         const slot = spawnSlots[index];
         const driftAngle = random() * Math.PI * 2;
         const driftSpeed = 0.025 + random() * 0.04;
+        const kind = kinds[index];
         createEntity(
-          kinds[index % kinds.length],
+          kind,
           radius,
           (slot[0] + (random() - 0.5) * 0.08) * viewHalfWidth,
           (slot[1] + (random() - 0.5) * 0.08) * viewHalfHeight,
           Math.cos(driftAngle) * driftSpeed,
           Math.sin(driftAngle) * driftSpeed,
+          kind === "triangle" ? coralVariant++ : 0,
         );
       }
       host.dataset.entityCount = String(initialEntityCount);
@@ -1387,14 +1457,15 @@ export default function AmbientWorld() {
           entity.group.scale.setScalar(breathe);
           const hue = entity.colorShift * 0.014;
           const lightness = entity.colorShift * 0.02;
-          const coralTint = entity.relic === "coral" ? 0.1 + (entity.colorShift + 1) * 0.035 : 0;
+          const coral = entity.relic === "coral";
+          const coralTint = coral ? 0.1 + (entity.colorShift + 1) * 0.035 : 0;
           const receivedLight = sampleLocalLightInfluence(entity.group.position, localLightSources, 0.78);
           entity.fill.color.copy(palette.surface)
             .lerp(palette.accentStrong, coralTint)
             .offsetHSL(hue, -0.016, lightness)
             .lerp(palette.accent, entity.hit * 0.32)
             .lerp(lightTheme ? palette.accentStrong : palette.surface, receivedLight * (lightTheme ? 0.1 : 0.46));
-          entity.edge.color.copy(lightTheme ? palette.line : palette.accent)
+          entity.edge.color.copy(lightTheme ? (coral ? palette.accentStrong : palette.line) : palette.accent)
             .offsetHSL(hue, -0.012, lightness * 0.7)
             .lerp(palette.accentStrong, entity.hit * 0.56)
             .lerp(palette.surface, receivedLight * (lightTheme ? 0.08 : 0.38));
@@ -1403,12 +1474,24 @@ export default function AmbientWorld() {
             .lerp(palette.accent, entity.hit * 0.34)
             .lerp(palette.surface, receivedLight * (lightTheme ? 0.06 : 0.28));
           const bloom = entity.relic === "sea-bloom";
-          entity.fill.opacity = ((bloom ? (lightTheme ? 0.045 : 0.025) : (lightTheme ? 0.24 : 0.12)) + entity.hit * 0.045)
+          entity.fill.opacity = ((bloom
+            ? (lightTheme ? 0.045 : 0.025)
+            : coral
+              ? (lightTheme ? 0.28 : 0.14)
+              : (lightTheme ? 0.24 : 0.12)) + entity.hit * 0.045)
             * birthVisibility + receivedLight * (lightTheme ? 0.035 : 0.13) * birthVisibility;
-          entity.edge.opacity = (bloom ? (lightTheme ? 0.32 : 0.2) : (lightTheme ? 0.78 : 0.46))
+          entity.edge.opacity = (bloom
+            ? (lightTheme ? 0.32 : 0.2)
+            : coral
+              ? (lightTheme ? 0.92 : 0.56)
+              : (lightTheme ? 0.78 : 0.46))
             * (currentProfile.entity + entity.hit * 0.1) * birthVisibility
             + receivedLight * (lightTheme ? 0.045 : 0.12) * birthVisibility;
-          entity.detail.opacity = (bloom ? (lightTheme ? 0.72 : 0.46) : (lightTheme ? 0.6 : 0.34))
+          entity.detail.opacity = (bloom
+            ? (lightTheme ? 0.72 : 0.46)
+            : coral
+              ? (lightTheme ? 0.78 : 0.46)
+              : (lightTheme ? 0.6 : 0.34))
             * (currentProfile.entity + entity.hit * 0.08) * birthVisibility
             + receivedLight * (lightTheme ? 0.035 : 0.1) * birthVisibility;
           if (entity.glow) {
@@ -2033,7 +2116,10 @@ export default function AmbientWorld() {
           <circle cx="0" cy="0" r="0.075" />
         </svg>
         <span className="ambient-static-relic ambient-static-sea-glass"></span>
-        <span className="ambient-static-relic ambient-static-coral"></span>
+        <svg className="ambient-static-coral" viewBox="0 0 100 100">
+          <path className="ambient-static-coral-body" d="M45 94C42 74 34 63 20 53C7 44 8 27 21 24C29 12 43 18 48 29C51 13 67 9 73 22C89 19 96 35 86 47C92 61 74 70 61 62C58 75 56 86 55 94Z" />
+          <path className="ambient-static-coral-vein" d="M50 90C49 67 50 47 58 25M49 69C38 58 28 48 18 37M50 61C61 52 73 43 84 36M49 52C39 42 32 34 27 26M51 46C61 38 68 31 70 22M31 48C45 45 60 44 75 47M37 61C48 57 62 56 72 59" />
+        </svg>
         <svg className="ambient-static-dolphin" viewBox="-4.05 -1.05 4.7 2.1">
           <path className="ambient-static-dolphin-fin" d="M-1.12-.58C-1.38-.95-1.69-1.02-1.91-.46C-1.62-.53-1.36-.57-1.12-.58Z" />
           <path className="ambient-static-dolphin-tail" d="M-2.93-.08C-3.19-.14-3.39-.4-3.76-.49C-3.67-.24-3.52-.08-3.21-.005C-3.52.04-3.72.18-3.86.42C-3.43.37-3.2.16-2.95.07Z" />
@@ -2046,10 +2132,6 @@ export default function AmbientWorld() {
         <span className="ambient-static-pixel ambient-static-pixel-one"></span>
         <span className="ambient-static-pixel ambient-static-pixel-two"></span>
         <span className="ambient-static-pixel ambient-static-pixel-three"></span>
-      </div>
-      <div className="ambient-structural-light" aria-hidden="true">
-        <i className="ambient-light-band ambient-light-band-one"></i>
-        <i className="ambient-light-band ambient-light-band-two"></i>
       </div>
       <div className="ambient-postprocess"></div>
     </div>
