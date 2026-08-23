@@ -176,6 +176,18 @@
   transition: opacity 520ms ease;
 }
 
+.ambient-static-fallback::before {
+  position: absolute;
+  inset: 0;
+  content: "";
+  background:
+    radial-gradient(circle at 56% 23%, color-mix(in srgb, var(--accent) 12%, transparent), transparent 15%),
+    radial-gradient(ellipse at 72% 43%, color-mix(in srgb, var(--accent) 8%, transparent), transparent 22%),
+    radial-gradient(circle at 11% 57%, color-mix(in srgb, var(--accent-strong) 7%, transparent), transparent 14%);
+  opacity: 0.42;
+  pointer-events: none;
+}
+
 .ambient-world[data-status="ready"]:not([data-backend="static"]) .ambient-static-fallback {
   opacity: 0;
 }
@@ -357,6 +369,11 @@ html[data-experience="ambient"] .ambient-structural-light {
 :root[data-theme="dark"] .ambient-static-relic {
   background: color-mix(in srgb, var(--surface-strong) 26%, transparent);
   opacity: 0.3;
+}
+
+:root[data-theme="dark"] .ambient-static-fallback::before {
+  opacity: 0.76;
+  mix-blend-mode: screen;
 }
 
 :root[data-theme="dark"] .ambient-static-sea-bloom {

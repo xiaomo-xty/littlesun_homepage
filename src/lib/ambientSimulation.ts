@@ -1,5 +1,10 @@
 export type Vector2Like = { x: number; y: number };
 
+export type LocalLightSource = Vector2Like & {
+  radius: number;
+  intensity: number;
+};
+
 export type SolidKind = "rect" | "circle" | "triangle";
 
 export type SolidBodyState = Vector2Like & {
@@ -191,6 +196,21 @@ export function sampleAmbientDepth(depth: number): AmbientDepthProfile {
     drift: 0.52 + eased * 0.7,
     interaction: 0.28 + eased * 0.92,
   };
+}
+
+export function sampleLocalLightInfluence(
+  position: Vector2Like,
+  sources: readonly LocalLightSource[],
+  maximum = 1,
+) {
+  let influence = 0;
+  for (const source of sources) {
+    const radius = Math.max(0.001, source.radius);
+    const distance = Math.hypot(position.x - source.x, position.y - source.y);
+    if (distance >= radius) continue;
+    influence += Math.max(0, source.intensity) * smoothstep(1 - distance / radius);
+  }
+  return Math.min(Math.max(0, maximum), influence);
 }
 
 export function sampleJellyPulse(phase: number): JellyPulseSample {
