@@ -105,58 +105,11 @@
 
 .ambient-world canvas,
 .ambient-static-fallback,
-.ambient-structural-light,
 .ambient-postprocess {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
-}
-
-.ambient-structural-light {
-  inset: -20vh -16vw;
-  overflow: hidden;
-  contain: layout paint;
-  opacity: 0.2;
-  transition: opacity 980ms cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.ambient-light-band {
-  position: absolute;
-  top: -28vh;
-  display: block;
-  width: clamp(230px, 25vw, 460px);
-  height: 160vh;
-  background: linear-gradient(
-    90deg,
-    transparent 0%,
-    color-mix(in srgb, var(--accent) 4%, transparent) 24%,
-    color-mix(in srgb, var(--accent) 22%, transparent) 48%,
-    color-mix(in srgb, var(--accent-strong) 8%, transparent) 64%,
-    transparent 100%
-  );
-  filter: blur(10px);
-  opacity: 0;
-  transform: translate3d(-42vw, 0, 0) rotate(18deg);
-  will-change: transform, opacity;
-}
-
-.ambient-light-band-one {
-  left: 8%;
-  animation: ambient-structural-sweep 16s cubic-bezier(0.45, 0, 0.2, 1) infinite;
-}
-
-.ambient-light-band-two {
-  right: 4%;
-  width: clamp(170px, 18vw, 330px);
-  background: linear-gradient(
-    90deg,
-    transparent 0%,
-    color-mix(in srgb, var(--accent-strong) 3%, transparent) 30%,
-    color-mix(in srgb, var(--accent) 16%, transparent) 52%,
-    transparent 100%
-  );
-  animation: ambient-structural-sweep-secondary 18s cubic-bezier(0.45, 0, 0.2, 1) 6.5s infinite;
 }
 
 .ambient-world canvas {
@@ -254,14 +207,28 @@
 }
 
 .ambient-static-coral {
+  position: absolute;
   right: 19%;
   bottom: 8%;
-  width: min(9vw, 126px);
-  aspect-ratio: 0.9;
-  border: 0;
-  background: color-mix(in srgb, var(--accent-strong) 34%, transparent);
-  clip-path: polygon(42% 100%, 38% 64%, 12% 45%, 2% 27%, 18% 20%, 37% 42%, 45% 0, 60% 2%, 57% 40%, 78% 25%, 92% 38%, 66% 59%, 62% 100%);
-  transform: rotate(8deg);
+  width: min(12vw, 156px);
+  overflow: visible;
+  opacity: 0.38;
+  transform: rotate(-6deg);
+}
+
+.ambient-static-coral-body {
+  fill: color-mix(in srgb, var(--accent-strong) 24%, transparent);
+  stroke: color-mix(in srgb, var(--accent-strong) 62%, var(--line-strong));
+  stroke-linejoin: round;
+  stroke-width: 1.5;
+}
+
+.ambient-static-coral-vein {
+  fill: none;
+  stroke: color-mix(in srgb, var(--accent-strong) 72%, var(--surface-strong));
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.35;
 }
 
 .ambient-static-dolphin {
@@ -336,10 +303,6 @@ html[data-experience="ambient"] .ambient-postprocess {
   opacity: 0;
 }
 
-html[data-experience="ambient"] .ambient-structural-light {
-  opacity: 0.42;
-}
-
 :root[data-theme="dark"] .ambient-world[data-status="ready"]:not([data-backend="static"]) canvas {
   opacity: 0.56;
 }
@@ -353,17 +316,8 @@ html[data-experience="ambient"] .ambient-structural-light {
   opacity: 0.5;
 }
 
-:root[data-theme="dark"] .ambient-structural-light {
-  opacity: 0.28;
-  mix-blend-mode: screen;
-}
-
 :root[data-theme="dark"][data-experience="ambient"] .ambient-postprocess {
   opacity: 0;
-}
-
-:root[data-theme="dark"][data-experience="ambient"] .ambient-structural-light {
-  opacity: 0.48;
 }
 
 :root[data-theme="dark"] .ambient-static-relic {
@@ -2511,22 +2465,6 @@ a.contact-channel:hover .contact-channel-arrow {
   100% { opacity: 0.72; transform: translate3d(0, 0, 0) scale(1); }
 }
 
-@keyframes ambient-structural-sweep {
-  0%, 7%, 100% { opacity: 0; transform: translate3d(-42vw, 0, 0) rotate(18deg); }
-  15% { opacity: 0.14; }
-  25% { opacity: 0.9; }
-  38% { opacity: 0.08; transform: translate3d(132vw, 0, 0) rotate(18deg); }
-  44% { opacity: 0; transform: translate3d(132vw, 0, 0) rotate(18deg); }
-}
-
-@keyframes ambient-structural-sweep-secondary {
-  0%, 10%, 100% { opacity: 0; transform: translate3d(38vw, 0, 0) rotate(-16deg); }
-  18% { opacity: 0.1; }
-  27% { opacity: 0.68; }
-  40% { opacity: 0.05; transform: translate3d(-126vw, 0, 0) rotate(-16deg); }
-  46% { opacity: 0; transform: translate3d(-126vw, 0, 0) rotate(-16deg); }
-}
-
 @keyframes visual-stage-light-sweep {
   0%, 8%, 100% { opacity: 0; transform: translate3d(-18%, 0, 0) rotate(28deg); }
   16% { opacity: 0.16; }
@@ -3136,7 +3074,6 @@ a.contact-channel:hover .contact-channel-arrow {
     -webkit-backdrop-filter: none;
   }
 
-  .ambient-structural-light,
   .visual-stage-light-field,
   [data-role="active-shell"] .card-material-light {
     opacity: 0.1;
@@ -3156,7 +3093,6 @@ a.contact-channel:hover .contact-channel-arrow {
 }
 
 @media (hover: none) and (pointer: coarse) {
-  .ambient-world .ambient-structural-light { opacity: 0.14; }
   .hero-visual-stage .visual-stage-light-field { opacity: 0.15; }
   .deck-stage [data-role="active-shell"] .card-material-light { opacity: 0.12; }
 }
@@ -3198,19 +3134,9 @@ a.contact-channel:hover .contact-channel-arrow {
 
   .visual-stage-pixel { animation: none; }
 
-  .ambient-light-band,
   .visual-stage-light-field i,
   .card-material-light i {
     animation: none;
-  }
-
-  .ambient-light-band-one {
-    opacity: 0.12;
-    transform: translate3d(42vw, 0, 0) rotate(18deg);
-  }
-
-  .ambient-light-band-two {
-    display: none;
   }
 
   .visual-stage-light-field,
