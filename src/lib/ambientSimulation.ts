@@ -45,6 +45,14 @@ export type JellyPulseSample = {
   thrust: number;
 };
 
+export type JellyPoseSample = JellyPulseSample & {
+  bellScaleX: number;
+  bellScaleY: number;
+  tentacleRootScaleX: number;
+  tentacleRootY: number;
+  tentacleWave: number;
+};
+
 export type FixedStepSchedule = {
   count: number;
   delta: number;
@@ -196,6 +204,19 @@ export function sampleJellyPulse(phase: number): JellyPulseSample {
     : 0;
   const thrust = rawThrust < 1e-12 ? 0 : rawThrust;
   return { contraction, thrust };
+}
+
+export function sampleJellyPose(phase: number, speedRatio = 0): JellyPoseSample {
+  const pulse = sampleJellyPulse(phase);
+  const speed = Math.max(0, Math.min(1, speedRatio));
+  return {
+    ...pulse,
+    bellScaleX: 1 - pulse.contraction * 0.13,
+    bellScaleY: 1 + pulse.contraction * 0.055 - pulse.thrust * 0.025,
+    tentacleRootScaleX: 1 - pulse.contraction * 0.1,
+    tentacleRootY: -0.03 + pulse.contraction * 0.055 - pulse.thrust * 0.018,
+    tentacleWave: 0.006 + speed * 0.012 + pulse.thrust * 0.006,
+  };
 }
 
 export function sampleJellyLuminescence(phase: number) {

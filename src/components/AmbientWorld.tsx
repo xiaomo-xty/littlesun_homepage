@@ -13,7 +13,7 @@ import {
   resolveCircleCollision,
   sampleAmbientDepth,
   sampleJellyLuminescence,
-  sampleJellyPulse,
+  sampleJellyPose,
   sampleOceanFlow,
   scheduleFixedSimulation,
   wrapDriftingBody,
@@ -1246,21 +1246,23 @@ export default function AmbientWorld() {
       const simulateJellies = (seconds: number, delta: number) => {
         jellies.forEach((jelly) => {
           const pulsePhase = seconds / jelly.cycleDuration + jelly.phase / (Math.PI * 2);
-          const pulseSample = sampleJellyPulse(pulsePhase);
+          const speedRatio = Math.hypot(jelly.vx, jelly.vy) / AMBIENT_JELLY_MAX_SPEED;
+          const pose = sampleJellyPose(pulsePhase, speedRatio);
           sampleOceanFlow(jelly, seconds + jelly.phase, flowForce);
-          const wander = Math.sin(seconds * jelly.swimRate + jelly.phase) * 0.42;
+          const wander = Math.sin(seconds * jelly.swimRate + jelly.phase) * 0.13
+            + Math.sin(seconds * jelly.swimRate * 0.47 + jelly.phase * 1.7) * 0.05;
           const desiredHeading = Math.atan2(
-            0.18 + flowForce.y * 0.36 + jelly.vy * 0.2,
-            flowForce.x * 0.54 + jelly.vx * 0.2,
+            0.07 + flowForce.y * 0.42 + jelly.vy * 0.32,
+            flowForce.x * 0.66 + jelly.vx * 0.32,
           ) + wander;
           const headingDelta = Math.atan2(
             Math.sin(desiredHeading - jelly.heading),
             Math.cos(desiredHeading - jelly.heading),
           );
-          jelly.heading += headingDelta * Math.min(1, delta * (0.68 + pulseSample.thrust * 0.72));
+          jelly.heading += headingDelta * Math.min(1, delta * (0.34 + currentProfile.flow * 0.08));
           jelly.vx += flowForce.x * delta * 0.07 * currentProfile.flow;
           jelly.vy += (flowForce.y * 0.052 * currentProfile.flow + 0.012) * delta;
-          const thrust = pulseSample.thrust * jelly.pulseStrength * 3.05
+          const thrust = pose.thrust * jelly.pulseStrength * 1.9
             * (0.76 + jelly.depth * 0.24) * currentProfile.jelly;
           jelly.vx += Math.cos(jelly.heading) * thrust * delta;
           jelly.vy += Math.sin(jelly.heading) * thrust * delta;
@@ -1280,8 +1282,8 @@ export default function AmbientWorld() {
           addSafeZoneForce(jelly.x, jelly.y, zoneForce, 0.9);
           jelly.vx += zoneForce.x * delta;
           jelly.vy += zoneForce.y * delta;
-          jelly.vx *= Math.exp(-1.28 * delta);
-          jelly.vy *= Math.exp(-1.28 * delta);
+          jelly.vx *= Math.exp(-1.08 * delta);
+          jelly.vy *= Math.exp(-1.08 * delta);
           limitMotionSpeed(jelly, AMBIENT_JELLY_MAX_SPEED);
           jelly.x += jelly.vx * delta;
           jelly.y += jelly.vy * delta;
@@ -1314,14 +1316,13 @@ export default function AmbientWorld() {
             advanceRibbonChain(
               tentacle.points,
               {
-                x: tentacle.offset * (1 - pulseSample.contraction * 0.18)
-                  + Math.sin(seconds * 1.22 + jelly.phase + tentacle.offset * 3) * 0.018,
-                y: -0.03 + pulseSample.contraction * 0.095 - pulseSample.thrust * 0.025,
+                x: tentacle.offset * pose.tentacleRootScaleX,
+                y: pose.tentacleRootY,
               },
               delta,
-              0.16 * (1 - pulseSample.contraction * 0.09),
-              18,
-              5.8,
+              0.158 * (1 - pose.contraction * 0.04),
+              16,
+              6.4,
             );
           });
         });
@@ -1330,25 +1331,23 @@ export default function AmbientWorld() {
       const renderJellies = (seconds: number, alpha: number) => {
         jellies.forEach((jelly) => {
           const pulsePhase = seconds / jelly.cycleDuration + jelly.phase / (Math.PI * 2);
-          const pulseSample = sampleJellyPulse(pulsePhase);
+          const speedRatio = Math.hypot(jelly.vx, jelly.vy) / AMBIENT_JELLY_MAX_SPEED;
+          const pose = sampleJellyPose(pulsePhase, speedRatio);
           const luminescence = sampleJellyLuminescence(pulsePhase);
-          const ambientBreath = Math.sin(seconds * 0.68 + jelly.phase) * 0.014;
+          const ambientBreath = Math.sin(seconds * 0.54 + jelly.phase) * 0.008;
           const depthProfile = sampleAmbientDepth(jelly.depth);
           const perspectiveScale = 0.82 + depthProfile.scale * 0.18;
           const renderHeading = lerpAngle(jelly.previousHeading, jelly.heading, alpha);
-          const swimSway = Math.sin(seconds * (0.86 + jelly.swimRate) + jelly.phase)
-            * (0.018 + currentProfile.jelly * 0.018);
           jelly.group.position.set(
-            lerp(jelly.previousX, jelly.x, alpha) - Math.sin(renderHeading) * swimSway,
-            lerp(jelly.previousY, jelly.y, alpha) + Math.cos(renderHeading) * swimSway,
+            lerp(jelly.previousX, jelly.x, alpha),
+            lerp(jelly.previousY, jelly.y, alpha),
             -3.2 + jelly.depth * 2.4,
           );
           jelly.group.rotation.z = renderHeading - Math.PI / 2
-            + Math.sin(seconds * 0.62 + jelly.phase) * 0.05
-            + pulseSample.thrust * 0.018;
+            + Math.sin(seconds * 0.38 + jelly.phase) * 0.012;
           jelly.group.scale.set(
-            jelly.scale * perspectiveScale * (1 - pulseSample.contraction * 0.23 + ambientBreath),
-            jelly.scale * perspectiveScale * (1 + pulseSample.contraction * 0.14 - ambientBreath * 0.7),
+            jelly.scale * perspectiveScale * (pose.bellScaleX + ambientBreath),
+            jelly.scale * perspectiveScale * (pose.bellScaleY - ambientBreath * 0.35),
             1,
           );
           const visibility = (0.72 + jelly.depth * 0.28) * currentProfile.jelly;
@@ -1384,11 +1383,12 @@ export default function AmbientWorld() {
             tentacle.points.forEach((point, pointIndex) => {
               const offset = pointIndex * 3;
               const trail = pointIndex / Math.max(1, tentacle.points.length - 1);
-              const trailWave = seconds * 1.38 + jelly.phase + tentacleIndex * 0.72 - pointIndex * 0.68;
+              const trailWave = seconds * (0.62 + Math.min(1, speedRatio) * 0.42)
+                + jelly.phase + tentacleIndex * 0.5 - pointIndex * 0.52;
               tentacle.positions[offset] = point.x
-                + Math.sin(trailWave) * trail * (0.032 + pulseSample.thrust * 0.028);
+                + Math.sin(trailWave) * trail * pose.tentacleWave;
               tentacle.positions[offset + 1] = point.y
-                + Math.cos(trailWave * 0.82) * trail * 0.014;
+                + Math.cos(trailWave * 0.74) * trail * pose.tentacleWave * 0.28;
               tentacle.positions[offset + 2] = -0.02;
             });
             tentacle.attribute.needsUpdate = true;
