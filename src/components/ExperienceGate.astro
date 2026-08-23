@@ -64,7 +64,10 @@
     content.setAttribute("inert", "");
 
     const runReducedReveal = async () => {
+      const choreographyStartedAt = performance.now();
       root.dataset.experience = "ambient";
+      root.dataset.choreography = "reduced";
+      root.dataset.choreographyPhase = "fade";
       gate.setAttribute("aria-hidden", "true");
       await nextFrames();
       content.removeAttribute("inert");
@@ -75,12 +78,15 @@
       );
       await finished(animation);
       root.dataset.experience = "ready";
+      root.dataset.choreographyPhase = "complete";
+      root.dataset.choreographyDurationMs = String(Math.round(performance.now() - choreographyStartedAt));
       animation.cancel();
       gate.hidden = true;
       window.dispatchEvent(new CustomEvent("homepage:experience-ready"));
     };
 
     const runJellyTowReveal = async (fast) => {
+      const choreographyStartedAt = performance.now();
       const jelly = choreography?.querySelector("[data-reveal-jelly]");
       const current = choreography?.querySelector("[data-reveal-current]");
       const threads = choreography
@@ -96,18 +102,20 @@
       await nextFrames();
       await wait(fast ? 80 : 480);
 
+      root.dataset.choreographyPhase = "arrival";
       if (jelly instanceof HTMLElement) {
         const arrival = jelly.animate(
           [
             { opacity: 0, transform: "translate3d(0, 34vh, 0) scale(0.82)" },
-            { opacity: 1, transform: "translate3d(0, -2vh, 0) scale(1.03)", offset: 0.78 },
+            { opacity: 1, transform: "translate3d(0, -2vh, 0) scale(1.03)", offset: 0.74 },
             { opacity: 1, transform: "translate3d(0, 0, 0) scale(1)" },
           ],
-          { duration: fast ? 360 : 720, easing: "cubic-bezier(0.16, 1, 0.3, 1)", fill: "both" },
+          { duration: fast ? 360 : 820, easing: "cubic-bezier(0.33, 1, 0.68, 1)", fill: "both" },
         );
         await finished(arrival);
       }
 
+      root.dataset.choreographyPhase = "tension";
       if (threads.length > 0) {
         const tensionAnimations = threads.map((thread, index) => thread.animate(
           [
@@ -115,7 +123,7 @@
             { transform: `rotate(${index % 2 === 0 ? 2 : -3}deg) scaleY(1.12)` },
             { transform: "rotate(0deg) scaleY(1)" },
           ],
-          { duration: fast ? 180 : 360, delay: index * 28, easing: "cubic-bezier(0.22, 1, 0.36, 1)", fill: "both" },
+          { duration: fast ? 180 : 460, delay: index * 34, easing: "cubic-bezier(0.45, 0, 0.55, 1)", fill: "both" },
         ));
         await Promise.all(tensionAnimations.map(finished));
       }
@@ -123,67 +131,79 @@
       const entranceTargets = [header, heroCopy, visualStage].filter((target) => target instanceof HTMLElement);
       entranceTargets.forEach((target, index) => {
         target.style.opacity = "0";
-        target.style.transform = `translate3d(0, ${index === 0 ? 22 : index === 1 ? 92 : 124}px, 0)`;
+        target.style.transform = `translate3d(0, ${index === 0 ? 30 : index === 1 ? 112 : 148}px, 0)`;
       });
 
       content.removeAttribute("inert");
       root.dataset.experience = "entering";
+      root.dataset.choreographyPhase = "tow";
 
       const animations = [];
       if (header instanceof HTMLElement) {
         animations.push(header.animate(
           [
-            { opacity: 0, transform: "translate3d(0, 22px, 0)" },
+            { opacity: 0, transform: "translate3d(0, 30px, 0)", easing: "cubic-bezier(0.45, 0, 0.55, 1)" },
+            { opacity: 0.08, transform: "translate3d(0, 27px, 0)", offset: 0.22, easing: "cubic-bezier(0.22, 0.68, 0.24, 1)" },
+            { opacity: 0.94, transform: "translate3d(0, 3px, 0)", offset: 0.76, easing: "cubic-bezier(0.22, 1, 0.36, 1)" },
             { opacity: 1, transform: "translate3d(0, 0, 0)" },
           ],
-          { duration: fast ? 420 : 860, easing: "cubic-bezier(0.22, 1, 0.36, 1)", fill: "both" },
+          { duration: fast ? 420 : 2200, easing: "linear", fill: "both" },
         ));
       }
       if (heroCopy instanceof HTMLElement) {
         animations.push(heroCopy.animate(
           [
-            { opacity: 0, transform: "translate3d(0, 92px, 0)" },
-            { opacity: 1, transform: "translate3d(0, -5px, 0)", offset: 0.84 },
+            { opacity: 0, transform: "translate3d(0, 112px, 0)", easing: "cubic-bezier(0.45, 0, 0.55, 1)" },
+            { opacity: 0.08, transform: "translate3d(0, 106px, 0)", offset: 0.18, easing: "cubic-bezier(0.22, 0.68, 0.24, 1)" },
+            { opacity: 0.72, transform: "translate3d(0, 42px, 0)", offset: 0.58, easing: "cubic-bezier(0.22, 1, 0.36, 1)" },
+            { opacity: 1, transform: "translate3d(0, -4px, 0)", offset: 0.88, easing: "cubic-bezier(0.22, 1, 0.36, 1)" },
             { opacity: 1, transform: "translate3d(0, 0, 0)" },
           ],
-          { duration: fast ? 620 : 1340, delay: fast ? 0 : 80, easing: "cubic-bezier(0.16, 1, 0.3, 1)", fill: "both" },
+          { duration: fast ? 620 : 2720, delay: fast ? 0 : 90, easing: "linear", fill: "both" },
         ));
       }
       if (visualStage instanceof HTMLElement) {
         animations.push(visualStage.animate(
           [
-            { opacity: 0, transform: "translate3d(0, 124px, 0) rotate(1.6deg) scale(0.965)" },
-            { opacity: 1, transform: "translate3d(0, -5px, 0) rotate(-0.2deg) scale(1.004)", offset: 0.82 },
+            { opacity: 0, transform: "translate3d(0, 148px, 0) rotate(1.4deg) scale(0.965)", easing: "cubic-bezier(0.45, 0, 0.55, 1)" },
+            { opacity: 0.06, transform: "translate3d(0, 140px, 0) rotate(1.2deg) scale(0.97)", offset: 0.18, easing: "cubic-bezier(0.22, 0.68, 0.24, 1)" },
+            { opacity: 0.7, transform: "translate3d(0, 54px, 0) rotate(0.35deg) scale(0.99)", offset: 0.58, easing: "cubic-bezier(0.22, 1, 0.36, 1)" },
+            { opacity: 1, transform: "translate3d(0, -4px, 0) rotate(-0.16deg) scale(1.003)", offset: 0.88, easing: "cubic-bezier(0.22, 1, 0.36, 1)" },
             { opacity: 1, transform: "translate3d(0, 0, 0) rotate(0deg) scale(1)" },
           ],
-          { duration: fast ? 680 : 1460, delay: fast ? 40 : 150, easing: "cubic-bezier(0.16, 1, 0.3, 1)", fill: "both" },
+          { duration: fast ? 680 : 2860, delay: fast ? 40 : 150, easing: "linear", fill: "both" },
         ));
       }
       if (current instanceof HTMLElement) {
         animations.push(current.animate(
           [
-            { opacity: 0, transform: "translate3d(0, 30vh, 0) scaleY(0.82)" },
-            { opacity: 0.78, transform: "translate3d(0, 2vh, 0) scaleY(1)", offset: 0.28 },
-            { opacity: 0.42, transform: "translate3d(0, -43vh, 0) scaleY(1.08)", offset: 0.74 },
+            { opacity: 0, transform: "translate3d(0, 30vh, 0) scaleY(0.82)", easing: "cubic-bezier(0.45, 0, 0.55, 1)" },
+            { opacity: 0.24, transform: "translate3d(0, 22vh, 0) scaleY(0.9)", offset: 0.2, easing: "cubic-bezier(0.22, 0.68, 0.24, 1)" },
+            { opacity: 0.78, transform: "translate3d(0, -6vh, 0) scaleY(1)", offset: 0.54, easing: "cubic-bezier(0.22, 1, 0.36, 1)" },
+            { opacity: 0.36, transform: "translate3d(0, -44vh, 0) scaleY(1.06)", offset: 0.82, easing: "cubic-bezier(0.22, 1, 0.36, 1)" },
             { opacity: 0, transform: "translate3d(0, -76vh, 0) scaleY(0.96)" },
           ],
-          { duration: fast ? 760 : 1640, easing: "cubic-bezier(0.16, 1, 0.3, 1)", fill: "both" },
+          { duration: fast ? 760 : 2880, easing: "linear", fill: "both" },
         ));
       }
       if (jelly instanceof HTMLElement) {
         animations.push(jelly.animate(
           [
-            { opacity: 1, transform: "translate3d(0, 0, 0) scale(1)" },
-            { opacity: 1, transform: "translate3d(-1.5vw, -48vh, 0) rotate(-4deg) scale(0.96)", offset: 0.68 },
+            { opacity: 1, transform: "translate3d(0, 0, 0) scale(1)", easing: "cubic-bezier(0.45, 0, 0.55, 1)" },
+            { opacity: 1, transform: "translate3d(-0.4vw, -4vh, 0) rotate(-1deg) scale(0.94, 1.04)", offset: 0.2, easing: "cubic-bezier(0.22, 0.68, 0.24, 1)" },
+            { opacity: 1, transform: "translate3d(-1.2vw, -31vh, 0) rotate(-3deg) scale(0.98)", offset: 0.54, easing: "cubic-bezier(0.22, 1, 0.36, 1)" },
+            { opacity: 0.78, transform: "translate3d(0.6vw, -59vh, 0) rotate(2deg) scale(0.88)", offset: 0.82, easing: "cubic-bezier(0.22, 1, 0.36, 1)" },
             { opacity: 0, transform: "translate3d(2vw, -82vh, 0) rotate(5deg) scale(0.72)", filter: "blur(2px)" },
           ],
-          { duration: fast ? 780 : 1680, easing: "cubic-bezier(0.16, 1, 0.3, 1)", fill: "both" },
+          { duration: fast ? 780 : 2920, easing: "linear", fill: "both" },
         ));
       }
 
       await Promise.all(animations.map(finished));
       root.dataset.experience = "ready";
       root.dataset.choreography = "complete";
+      root.dataset.choreographyPhase = "complete";
+      root.dataset.choreographyDurationMs = String(Math.round(performance.now() - choreographyStartedAt));
       entranceTargets.forEach((target) => {
         target.style.removeProperty("opacity");
         target.style.removeProperty("transform");

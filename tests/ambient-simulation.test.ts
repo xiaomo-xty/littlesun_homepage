@@ -11,6 +11,7 @@ import {
   resolveCircleCollision,
   sampleAmbientDepth,
   sampleJellyLuminescence,
+  sampleJellyPose,
   sampleJellyPulse,
   sampleOceanFlow,
   scheduleFixedSimulation,
@@ -95,6 +96,28 @@ describe("ambient entity rules", () => {
     expect(Math.abs(sampleJellyLuminescence(0.9999) - resting)).toBeLessThan(0.002);
     for (let index = -20; index <= 120; index += 1) {
       expect(sampleJellyLuminescence(index / 100)).toBeWithin(0, 1);
+    }
+  });
+
+  test("jelly pose stays soft, bounded and continuous across a pulse cycle", () => {
+    const resting = sampleJellyPose(0, 0);
+    const propelling = sampleJellyPose(0.09, 1);
+    const contracted = sampleJellyPose(0.18, 0.5);
+    const loopEnd = sampleJellyPose(0.99999, 0);
+
+    expect(resting.bellScaleX).toBe(1);
+    expect(resting.bellScaleY).toBe(1);
+    expect(contracted.bellScaleX).toBeWithin(0.86, 0.9);
+    expect(contracted.bellScaleY).toBeWithin(1.04, 1.07);
+    expect(propelling.tentacleWave).toBeLessThanOrEqual(0.024);
+    expect(Math.abs(loopEnd.bellScaleX - resting.bellScaleX)).toBeLessThan(0.00001);
+    expect(Math.abs(loopEnd.bellScaleY - resting.bellScaleY)).toBeLessThan(0.00001);
+
+    for (let index = -20; index <= 120; index += 1) {
+      const pose = sampleJellyPose(index / 100, index / 100);
+      expect(pose.bellScaleX).toBeWithin(0.86, 1.01);
+      expect(pose.bellScaleY).toBeWithin(0.97, 1.07);
+      expect(pose.tentacleWave).toBeWithin(0.006, 0.025);
     }
   });
 
