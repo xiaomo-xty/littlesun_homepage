@@ -661,3 +661,28 @@ v0.7 满足海洋静物、双主题眼睛修正、固定时间步、WebGPU 优�
 - 最终 WebGPU 深色浏览器会话无 console warning 或 error。
 - `prefers-reduced-motion` 通过短淡入逻辑、Motion hook、CSS 媒体覆盖和代码审计确认。
 - 未修改 `D:\project\blog`。
+
+## 2026-08-23 / v0.13 联系区信号港湾验收
+
+### 视觉结构
+
+- `.contact-section` 计算背景改为 `rgb(var(--page-rgb) / 0.9)`，不再使用 `var(--accent)` 大色块。
+- 深色主题中海流、浮标和背景生物只作为低对比层；浅色主题中结构线与正文对比清晰。
+- 博客占据桌面轨道左侧，GitHub、简历和邮箱在右侧三行排列；各入口之间通过分隔线而不是独立卡片组织。
+- 简历和邮箱没有链接或虚假点击，只显示等待真实内容的状态。
+
+### 交互与响应式
+
+- 博客和 GitHub hover 局部显示 9% accent 背景，图标与箭头短距离移动。
+- `390 x 844` 下四个入口改为单列，轨道约宽 `335 px`，备案号完整显示。
+- 桌面与移动端文档横向溢出为 0。
+- 最终 WebGPU 深色浏览器会话为 `ready`，无 console warning 或 error。
+
+### 自动化与质量门禁
+
+- `bun test`：33 passed、0 failed。
+- `bun run check`：0 errors、0 warnings、0 hints。
+- `bun run build`：2 个静态路由构建成功。
+- `git diff --check`：通过。
+- `prefers-reduced-motion` 禁用信号脉冲、入口、图标和箭头位移。
+- 未修改 `D:\project\blog`。
