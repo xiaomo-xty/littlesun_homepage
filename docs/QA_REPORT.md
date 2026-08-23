@@ -776,3 +776,32 @@ v0.7 满足海洋静物、双主题眼睛修正、固定时间步、WebGPU 优�
 - `bun run check`：0 errors、0 warnings、0 hints。
 - `bun run build`：2 个静态路由构建成功。
 - `git diff --check`：通过。
+
+## 2026-08-23 / v0.17 结构光与空闲视差验收
+
+### 材质与交互
+
+- 背景结构光由两个宽幅斜向光带组成，周期分别为 `16 s` 与 `18 s`，没有彩虹色相漂移。
+- Hero 空闲姿态在连续采样间发生低幅变化；指针输入优先，光带只在视觉视口内部出现。
+- 项目卡空闲姿态在约 `900 ms` 间隔采样中持续变化，没有位置跳变。
+- 深色悬浮测试中，活动卡结构光透明度由 `0.24` 提高至 `0.42`；指针移出后 `data-pointer-active` 清除并恢复空闲轨道。
+- 切牌完成后活动材质层为 1，过渡材质层为 0，没有前后卡同时扫光。
+
+### 浏览器矩阵
+
+| 场景 | 结果 |
+| --- | --- |
+| 当前桌面预览窗 / WebGPU / 深色 | `ready`，Hero、背景和活动卡层级正常 |
+| 390 x 844 / WebGPU / 浅色 | `ready`，正文对比清晰，无有效横向溢出 |
+| 390 x 844 / WebGL2 / 浅色 | `ready`，结构光层数量为 2 |
+| 390 x 844 / static / 浅色 | `ready`，结构光层数量为 2 |
+| 项目卡切换 | 切换到“商业 C++ 开发”后回到 `ready`，链接和详情结构未受影响 |
+
+### 自动化与质量门禁
+
+- `bun test`：36 passed、0 failed；新增空闲视差幅度边界与周期连续性测试。
+- `bun run check`：0 errors、0 warnings、0 hints。
+- `bun run build`：2 个静态路由构建成功。
+- `git diff --check`：通过。
+- `prefers-reduced-motion` 与 `prefers-reduced-transparency` 通过 CSS 媒体覆盖和 Motion 低动态分支代码审计确认。
+- 未修改 `D:\project\blog`。

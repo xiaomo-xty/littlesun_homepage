@@ -9,12 +9,14 @@ import {
 import {
   AnimatePresence,
   motion,
+  useAnimationFrame,
   useMotionValue,
   useReducedMotion,
   useSpring,
   useTransform,
 } from "motion/react";
 import { useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
+import { sampleIdleParallax } from "../lib/idleParallax";
 
 type VisualMode = {
   id: "portrait" | "workspace" | "work";
@@ -64,6 +66,7 @@ export default function HeroVisualStage() {
   const [activeIndex, setActiveIndex] = useState(0);
   const [direction, setDirection] = useState(1);
   const pointerStart = useRef<number | null>(null);
+  const pointerActive = useRef(false);
   const reducedMotion = useReducedMotion();
   const pointerX = useMotionValue(0);
   const pointerY = useMotionValue(0);
@@ -73,8 +76,17 @@ export default function HeroVisualStage() {
   const rotateX = useTransform(smoothY, [-1, 1], [2.1, -2.1]);
   const mediaX = useTransform(smoothX, [-1, 1], [-5, 5]);
   const mediaY = useTransform(smoothY, [-1, 1], [-4, 4]);
+  const lightX = useTransform(smoothX, [-1, 1], [-18, 18]);
+  const lightY = useTransform(smoothY, [-1, 1], [-11, 11]);
   const activeMode = modes[activeIndex];
   const ActiveIcon = activeMode.icon;
+
+  useAnimationFrame((time) => {
+    if (reducedMotion || pointerActive.current) return;
+    const idle = sampleIdleParallax(time, 12_800, 0.15, 0.1, 0.35);
+    pointerX.set(idle.x);
+    pointerY.set(idle.y);
+  });
 
   const selectMode = (nextIndex: number) => {
     const wrapped = wrapIndex(nextIndex);
@@ -91,14 +103,14 @@ export default function HeroVisualStage() {
 
   const handlePointerMove = (event: PointerEvent<HTMLElement>) => {
     if (reducedMotion || event.pointerType === "touch") return;
+    pointerActive.current = true;
     const bounds = event.currentTarget.getBoundingClientRect();
     pointerX.set(((event.clientX - bounds.left) / bounds.width - 0.5) * 2);
     pointerY.set(((event.clientY - bounds.top) / bounds.height - 0.5) * 2);
   };
 
   const resetPointer = () => {
-    pointerX.set(0);
-    pointerY.set(0);
+    pointerActive.current = false;
   };
 
   const handleKeyDown = (event: KeyboardEvent<HTMLElement>) => {
@@ -154,6 +166,12 @@ export default function HeroVisualStage() {
           aria-label={`${activeMode.label}视觉素材`}
           aria-live="polite"
         >
+          <motion.span
+            className="visual-stage-light-field"
+            style={reducedMotion ? undefined : { x: lightX, y: lightY }}
+            aria-hidden="true"
+          ><i /></motion.span>
+
           <AnimatePresence initial={false} custom={direction} mode="popLayout">
             <motion.div
               key={activeMode.id}

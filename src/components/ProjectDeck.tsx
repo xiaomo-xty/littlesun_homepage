@@ -7,7 +7,9 @@ import {
 import {
   motion,
   type PanInfo,
+  type MotionValue,
   useAnimate,
+  useAnimationFrame,
   useMotionValue,
   useReducedMotion,
   useSpring,
@@ -15,6 +17,7 @@ import {
 } from "motion/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { projects, type Project } from "../data/projects";
+import { sampleIdleParallax } from "../lib/idleParallax";
 
 type Filter = "all" | Project["category"];
 
@@ -79,6 +82,8 @@ type CardFrontProps = {
   detailsOpen: boolean;
   onToggleDetails: () => void;
   interactive?: boolean;
+  materialX?: MotionValue<number>;
+  materialY?: MotionValue<number>;
 };
 
 function CardFront({
@@ -89,6 +94,8 @@ function CardFront({
   detailsOpen,
   onToggleDetails,
   interactive = true,
+  materialX,
+  materialY,
 }: CardFrontProps) {
   const detailsId = `details-${project.id}-${instanceKey}`;
 
@@ -98,6 +105,12 @@ function CardFront({
       aria-hidden={!interactive}
       inert={interactive ? undefined : true}
     >
+      <motion.span
+        className="card-material-light"
+        style={materialX && materialY ? { x: materialX, y: materialY } : undefined}
+        aria-hidden="true"
+      ><i /></motion.span>
+
       <header>
         <span className="pixel-type">{project.kind}</span>
         <span className="card-status">{project.status}</span>
@@ -206,6 +219,7 @@ export default function ProjectDeck() {
   const operationRef = useRef(0);
   const transitionTokenRef = useRef(0);
   const wasInViewRef = useRef(false);
+  const pointerActiveRef = useRef(false);
 
   const pointerX = useMotionValue(0);
   const pointerY = useMotionValue(0);
@@ -216,6 +230,14 @@ export default function ProjectDeck() {
   const rotateY = useSpring(useTransform(pointerX, [-0.5, 0.5], [-4.5, 4.5]), {
     stiffness: 280,
     damping: 24,
+  });
+  const materialX = useSpring(useTransform(pointerX, [-0.5, 0.5], [-24, 24]), {
+    stiffness: 170,
+    damping: 25,
+  });
+  const materialY = useSpring(useTransform(pointerY, [-0.5, 0.5], [-15, 15]), {
+    stiffness: 170,
+    damping: 25,
   });
 
   const filteredProjects = useMemo(() => getProjects(filter), [filter]);
@@ -233,9 +255,16 @@ export default function ProjectDeck() {
   }, [deckIndex, deckProjects]);
 
   const resetPointer = () => {
-    pointerX.set(0);
-    pointerY.set(0);
+    pointerActiveRef.current = false;
+    stageRef.current?.removeAttribute("data-pointer-active");
   };
+
+  useAnimationFrame((time) => {
+    if (reduceMotion || pointerActiveRef.current || !stageInView || !ready || transition || detailsOpen) return;
+    const idle = sampleIdleParallax(time, 11_200, 0.06, 0.045, 1.2);
+    pointerX.set(idle.x);
+    pointerY.set(idle.y);
+  });
 
   useEffect(() => {
     const section = document.querySelector<HTMLElement>("[data-project-stage]");
@@ -409,6 +438,8 @@ export default function ProjectDeck() {
 
   const handlePointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
     if (reduceMotion || transition || !ready || detailsOpen || event.pointerType === "touch") return;
+    pointerActiveRef.current = true;
+    stageRef.current?.setAttribute("data-pointer-active", "true");
     const rect = event.currentTarget.getBoundingClientRect();
     pointerX.set((event.clientX - rect.left) / rect.width - 0.5);
     pointerY.set((event.clientY - rect.top) / rect.height - 0.5);
@@ -582,6 +613,8 @@ export default function ProjectDeck() {
                     onToggleDetails={() => setDetailsOpen((open) => !open)}
                     interactive={ready}
                     sceneRole="active-scene"
+                    materialX={materialX}
+                    materialY={materialY}
                   />
                 </motion.div>
               </motion.div>
