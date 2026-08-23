@@ -186,6 +186,28 @@ section[id] {
   transform: translate3d(0, 0, 0) scale(1);
 }
 
+.reveal-ready [data-motion-kind="hero-copy"] {
+  transform: translate3d(-44px, 14px, 0) scale(0.982);
+}
+
+.reveal-ready [data-motion-kind="hero-stage"] {
+  transform: translate3d(52px, 20px, 0) rotate(1.6deg) scale(0.94);
+  transform-origin: center;
+}
+
+.reveal-ready [data-motion-kind="hero-copy"][data-motion-state="visible"],
+.reveal-ready [data-motion-kind="hero-stage"][data-motion-state="visible"] {
+  transform: translate3d(0, 0, 0) rotate(0) scale(1);
+}
+
+.reveal-ready [data-motion-kind="section-guide"] {
+  transform: translate3d(0, 16px, 0) scale(0.82);
+}
+
+.reveal-ready [data-motion-kind="section-guide"][data-motion-state="visible"] {
+  transform: translate3d(0, 0, 0) scale(1);
+}
+
 .reveal-ready [data-motion-kind="about-card"] {
   transform: translate3d(0, 30px, 0) rotate(0.6deg);
 }

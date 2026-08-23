@@ -2,12 +2,13 @@
 import { ArrowUpRightIcon } from "@phosphor-icons/react";
 import { primaryLinks, site } from "../data/site";
 import HeroVisualStage from "./HeroVisualStage";
+import SectionGuide from "./SectionGuide";
 import TypewriterLine from "./TypewriterLine";
 ---
 
-<section id="top" class="hero-section" data-reveal="hero">
+<section id="top" class="hero-section" data-reveal="hero" data-motion-group>
   <div class="shell hero-grid">
-    <div class="hero-copy">
+    <div class="hero-copy" data-motion-item data-motion-kind="hero-copy">
       <p class="direction-line"><TypewriterLine client:load /></p>
       <h1>{site.title}</h1>
       <p class="hero-intro">{site.introduction}</p>
@@ -42,8 +43,9 @@ import TypewriterLine from "./TypewriterLine";
       </div>
     </div>
 
-    <div class="hero-stage-entrance" data-hero-stage-entrance>
+    <div class="hero-stage-entrance" data-hero-stage-entrance data-motion-item data-motion-kind="hero-stage">
       <HeroVisualStage client:load />
     </div>
   </div>
+  <SectionGuide target="#about" label="前往关于我" />
 </section>
