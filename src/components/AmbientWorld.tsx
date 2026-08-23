@@ -13,11 +13,13 @@ import {
   resolveCircleCollision,
   sampleAmbientDepth,
   sampleJellyLuminescence,
+  sampleLocalLightInfluence,
   sampleJellyPose,
   sampleOceanFlow,
   scheduleFixedSimulation,
   wrapDriftingBody,
   type CollisionResult,
+  type LocalLightSource,
   type RibbonPoint,
   type SolidBodyState,
   type SolidKind,
@@ -64,6 +66,7 @@ type OceanEntity = SolidBodyState & {
   edge: THREE.LineBasicMaterial;
   detail: THREE.LineBasicMaterial;
   glow?: THREE.MeshBasicMaterial;
+  lightField?: LocalLightField;
   hit: number;
   phase: number;
   depth: number;
@@ -133,8 +136,14 @@ type AmbientJelly = Vector2Like & {
   outerGlow: THREE.MeshBasicMaterial;
   halo: THREE.Mesh;
   outerHalo: THREE.Mesh;
+  lightField: LocalLightField;
   colorShift: number;
   tentacles: JellyTentacle[];
+};
+
+type LocalLightField = {
+  mesh: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>;
+  material: THREE.MeshBasicMaterial;
 };
 
 type SafeZone = { left: number; right: number; top: number; bottom: number };
@@ -149,6 +158,8 @@ type FlowRibbon = {
   curve: THREE.CatmullRomCurve3;
   positions: Float32Array;
   attribute: THREE.BufferAttribute;
+  colors: Float32Array;
+  colorAttribute: THREE.BufferAttribute;
   material: THREE.LineBasicMaterial;
   samples: number;
   phase: number;
@@ -221,7 +232,8 @@ export default function AmbientWorld() {
     host.dataset.entityVisual = "marine-still-life";
     host.dataset.contactModel = "gentle-displacement";
     host.dataset.entityModel = "fixed-drift";
-    host.dataset.glowModel = "selective-additive";
+    host.dataset.glowModel = "local-falloff-illumination";
+    host.dataset.lightSourceCount = "0";
     host.dataset.jellyMotion = "pulse-glide";
     host.dataset.jellyPropulsion = "pulse-recoil";
     host.dataset.staticOverlay = "fallback-only";
@@ -327,12 +339,54 @@ export default function AmbientWorld() {
 
       const sharedMatrix = new THREE.Matrix4();
       const sharedColor = new THREE.Color();
+      const sharedLightPosition = new THREE.Vector2();
       const curveSample = new THREE.Vector3();
       const pointerWorld = new THREE.Vector2();
       const repelForce: Vector2Like = { x: 0, y: 0 };
       const flowForce: Vector2Like = { x: 0, y: 0 };
       const zoneForce = new THREE.Vector2();
       const obstacleForce = new THREE.Vector2();
+
+      const lightFieldCanvas = document.createElement("canvas");
+      lightFieldCanvas.width = 128;
+      lightFieldCanvas.height = 128;
+      const lightFieldContext = lightFieldCanvas.getContext("2d");
+      if (lightFieldContext) {
+        const gradient = lightFieldContext.createRadialGradient(64, 64, 0, 64, 64, 64);
+        gradient.addColorStop(0, "rgba(255, 255, 255, 0.9)");
+        gradient.addColorStop(0.16, "rgba(255, 255, 255, 0.56)");
+        gradient.addColorStop(0.46, "rgba(255, 255, 255, 0.16)");
+        gradient.addColorStop(0.76, "rgba(255, 255, 255, 0.035)");
+        gradient.addColorStop(1, "rgba(255, 255, 255, 0)");
+        lightFieldContext.fillStyle = gradient;
+        lightFieldContext.fillRect(0, 0, 128, 128);
+      }
+      const lightFieldTexture = register(new THREE.CanvasTexture(lightFieldCanvas));
+      lightFieldTexture.colorSpace = THREE.SRGBColorSpace;
+      lightFieldTexture.generateMipmaps = false;
+      lightFieldTexture.minFilter = THREE.LinearFilter;
+      lightFieldTexture.magFilter = THREE.LinearFilter;
+      const lightFieldGeometry = register(new THREE.PlaneGeometry(1, 1));
+      const localLightSources: LocalLightSource[] = [];
+
+      const createLocalLightField = (renderOrder: number): LocalLightField => {
+        const material = register(new THREE.MeshBasicMaterial({
+          map: lightFieldTexture,
+          color: 0x78c9ff,
+          transparent: true,
+          opacity: 0,
+          depthTest: false,
+          depthWrite: false,
+          side: THREE.DoubleSide,
+          blending: THREE.NormalBlending,
+          toneMapped: false,
+        }));
+        const mesh = new THREE.Mesh(lightFieldGeometry, material);
+        mesh.frustumCulled = false;
+        mesh.renderOrder = renderOrder;
+        world.add(mesh);
+        return { mesh, material };
+      };
 
       const particleGeometry = register(new THREE.BoxGeometry(0.05, 0.05, 0.025));
       const particleLayerSpecs = [
@@ -357,12 +411,14 @@ export default function AmbientWorld() {
               depthTest: false,
               depthWrite: false,
               vertexColors: true,
+              map: lightFieldTexture,
+              side: THREE.DoubleSide,
               blending: THREE.AdditiveBlending,
               toneMapped: false,
             }))
           : undefined;
         const glowMesh = glowMaterial
-          ? new THREE.InstancedMesh(particleGeometry, glowMaterial, spec.count)
+          ? new THREE.InstancedMesh(lightFieldGeometry, glowMaterial, spec.count)
           : undefined;
         if (glowMesh) {
           glowMesh.frustumCulled = false;
@@ -411,11 +467,19 @@ export default function AmbientWorld() {
         const controlPoints = Array.from({ length: controlCount }, () => new THREE.Vector3());
         const curve = new THREE.CatmullRomCurve3(controlPoints, false, "centripetal", 0.42);
         const positions = new Float32Array(samples * 3);
+        const colors = new Float32Array(samples * 3);
         const geometry = register(new THREE.BufferGeometry());
         const attribute = new THREE.BufferAttribute(positions, 3);
+        const colorAttribute = new THREE.BufferAttribute(colors, 3);
         attribute.setUsage(THREE.DynamicDrawUsage);
+        colorAttribute.setUsage(THREE.DynamicDrawUsage);
         geometry.setAttribute("position", attribute);
-        const material = register(new THREE.LineBasicMaterial({ transparent: true, depthWrite: false }));
+        geometry.setAttribute("color", colorAttribute);
+        const material = register(new THREE.LineBasicMaterial({
+          transparent: true,
+          depthWrite: false,
+          vertexColors: true,
+        }));
         const line = new THREE.Line(geometry, material);
         line.frustumCulled = false;
         world.add(line);
@@ -424,6 +488,8 @@ export default function AmbientWorld() {
           curve,
           positions,
           attribute,
+          colors,
+          colorAttribute,
           material,
           samples,
           phase: random() * Math.PI * 2,
@@ -489,6 +555,7 @@ export default function AmbientWorld() {
         const outline = new THREE.LineSegments(jellyEdgeGeometry, edge);
         const group = new THREE.Group();
         const renderOrder = 52 + Math.round(depth * 30);
+        const lightField = createLocalLightField(renderOrder - 3);
         outerHalo.renderOrder = renderOrder - 2;
         outerHalo.scale.set(1.42, 1.34, 1);
         halo.renderOrder = renderOrder - 1;
@@ -550,6 +617,7 @@ export default function AmbientWorld() {
           outerGlow,
           halo,
           outerHalo,
+          lightField,
           colorShift: random() * 2 - 1,
           tentacles,
         });
@@ -704,6 +772,7 @@ export default function AmbientWorld() {
               toneMapped: false,
             }));
         const halo = glow ? new THREE.Mesh(geometry, glow) : undefined;
+        const lightField = glow ? createLocalLightField(30) : undefined;
         const edgeGeometry = register(new THREE.EdgesGeometry(geometry, 36));
         const edge = register(new THREE.LineBasicMaterial({ transparent: true, depthWrite: false }));
         const edges = new THREE.LineSegments(edgeGeometry, edge);
@@ -731,6 +800,7 @@ export default function AmbientWorld() {
           edge,
           detail,
           glow,
+          lightField,
           hit: 0,
           phase: random() * Math.PI * 2,
           depth: -0.72 - random() * 1.32,
@@ -799,6 +869,7 @@ export default function AmbientWorld() {
       const dolphinGlowMaterial = createDolphinMaterial(0x58b4dc);
       dolphinGlowMaterial.blending = THREE.AdditiveBlending;
       dolphinGlowMaterial.toneMapped = false;
+      const dolphinLightField = createLocalLightField(84);
       const dolphinOutlineMaterial = register(new THREE.LineBasicMaterial({
         color: 0xc4eff7,
         transparent: true,
@@ -971,6 +1042,7 @@ export default function AmbientWorld() {
         dolphinFinMaterial.color.copy(palette.accentStrong);
         dolphinEyeMaterial.color.set(lightTheme ? 0x071722 : 0x050f16);
         dolphinGlowMaterial.color.copy(lightTheme ? palette.accentStrong : palette.accent);
+        dolphinLightField.material.color.copy(lightTheme ? palette.accentStrong : palette.accent);
         host.dataset.dolphinEye = lightTheme ? "deep-ink-light" : "deep-ink-dark";
         host.dataset.glowTheme = lightTheme ? "highlight" : "bioluminescent";
         dolphinOutlineMaterial.color.copy(lightTheme ? palette.accentStrong : palette.surface);
@@ -991,11 +1063,12 @@ export default function AmbientWorld() {
           jelly.glow.color.copy(lightTheme ? palette.accentStrong : palette.accent)
             .offsetHSL(hue, -0.008, Math.max(0, lightness));
           jelly.outerGlow.color.copy(jelly.glow.color);
+          jelly.lightField.material.color.copy(jelly.glow.color);
           jelly.tentacles.forEach((tentacle) => {
             tentacle.material.color.copy(palette.accent).offsetHSL(hue, -0.012, lightness * 0.54);
           });
         });
-        flowRibbons.forEach((ribbon) => ribbon.material.color.copy(lightTheme ? palette.line : palette.accent));
+        flowRibbons.forEach((ribbon) => ribbon.material.color.set(0xffffff));
         entities.forEach((entity) => {
           const hue = entity.colorShift * 0.014;
           const lightness = entity.colorShift * 0.02;
@@ -1005,6 +1078,8 @@ export default function AmbientWorld() {
           entity.detail.color.copy(lightTheme ? palette.accentStrong : palette.surface)
             .offsetHSL(hue, -0.01, lightness * 0.65);
           entity.glow?.color.copy(lightTheme ? palette.accentStrong : palette.accent)
+            .offsetHSL(hue, -0.01, Math.max(0, lightness));
+          entity.lightField?.material.color.copy(lightTheme ? palette.accentStrong : palette.accent)
             .offsetHSL(hue, -0.01, Math.max(0, lightness));
         });
       };
@@ -1090,10 +1165,111 @@ export default function AmbientWorld() {
             ribbon.positions[offset] = curveSample.x;
             ribbon.positions[offset + 1] = curveSample.y;
             ribbon.positions[offset + 2] = curveSample.z;
+            sharedLightPosition.set(curveSample.x, curveSample.y);
+            const receivedLight = sampleLocalLightInfluence(sharedLightPosition, localLightSources, 0.68);
+            sharedColor.copy(lightTheme ? palette.line : palette.accent).lerp(
+              palette.surface,
+              receivedLight * (lightTheme ? 0.18 : 0.7),
+            );
+            ribbon.colors[offset] = sharedColor.r;
+            ribbon.colors[offset + 1] = sharedColor.g;
+            ribbon.colors[offset + 2] = sharedColor.b;
           }
           ribbon.attribute.needsUpdate = true;
+          ribbon.colorAttribute.needsUpdate = true;
           ribbon.material.opacity = (lightTheme ? 0.14 : 0.13) * currentProfile.flow;
         });
+      };
+
+      const updateLocalLightFields = (seconds: number, alpha: number) => {
+        let lightCount = 0;
+        const addLight = (x: number, y: number, radius: number, intensity: number) => {
+          const source = localLightSources[lightCount] ?? { x: 0, y: 0, radius: 1, intensity: 0 };
+          source.x = x;
+          source.y = y;
+          source.radius = radius;
+          source.intensity = intensity;
+          localLightSources[lightCount] = source;
+          lightCount += 1;
+        };
+
+        jellies.forEach((jelly) => {
+          const pulsePhase = seconds / jelly.cycleDuration + jelly.phase / (Math.PI * 2);
+          const luminescence = sampleJellyLuminescence(pulsePhase);
+          const depthProfile = sampleAmbientDepth(jelly.depth);
+          const perspectiveScale = 0.82 + depthProfile.scale * 0.18;
+          const renderX = lerp(jelly.previousX, jelly.x, alpha);
+          const renderY = lerp(jelly.previousY, jelly.y, alpha);
+          const visibility = (0.72 + jelly.depth * 0.28) * currentProfile.jelly;
+          const diameter = jelly.scale * perspectiveScale * (4.9 + luminescence * 1.1);
+          jelly.lightField.mesh.position.set(renderX, renderY, -3.28 + jelly.depth * 2.4);
+          jelly.lightField.mesh.scale.set(diameter * 1.16, diameter, 1);
+          jelly.lightField.material.opacity = (lightTheme
+            ? 0.01 + luminescence * 0.032
+            : 0.042 + luminescence * 0.16) * visibility;
+          addLight(
+            renderX,
+            renderY,
+            Math.max(1.1, diameter * 0.58),
+            (lightTheme ? 0.16 : 0.56) * (0.24 + luminescence * 0.76) * visibility,
+          );
+        });
+
+        entities.forEach((entity) => {
+          if (!entity.lightField) return;
+          const renderX = lerp(entity.previousX, entity.x, alpha);
+          const renderY = lerp(entity.previousY, entity.y, alpha);
+          const shimmer = 0.5 + Math.sin(seconds * 0.74 + entity.phase) * 0.5;
+          const bloom = entity.relic === "sea-bloom";
+          const birthVisibility = Math.min(1, entity.age / 0.9);
+          const diameter = entity.radius * (bloom ? 7.6 : 6.3);
+          entity.lightField.mesh.position.set(renderX, renderY, entity.depth - 0.04);
+          entity.lightField.mesh.scale.set(diameter, diameter, 1);
+          entity.lightField.material.opacity = (lightTheme ? 0.012 : bloom ? 0.092 : 0.058)
+            * (0.58 + shimmer * 0.42) * currentProfile.entity * birthVisibility;
+          addLight(
+            renderX,
+            renderY,
+            Math.max(0.72, diameter * 0.7),
+            (lightTheme ? 0.075 : bloom ? 0.32 : 0.21)
+              * (0.58 + shimmer * 0.42) * currentProfile.entity * birthVisibility,
+          );
+        });
+
+        const dolphinIndex = Math.min(
+          dolphinSpine.length - 1,
+          Math.max(0, Math.floor(dolphinSpine.length * 0.38)),
+        );
+        const dolphinPoint = dolphinSpine[dolphinIndex];
+        const previousDolphinPoint = previousDolphinSpine[dolphinIndex] || dolphinPoint;
+        if (dolphinPoint && previousDolphinPoint) {
+          const renderX = lerp(previousDolphinPoint.x, dolphinPoint.x, alpha);
+          const renderY = lerp(previousDolphinPoint.y, dolphinPoint.y, alpha);
+          const visibility = (0.72 + currentProfile.energy * 0.28) * dolphinTextVisibility;
+          const diameter = Math.max(2.2, DOLPHIN_BODY_LENGTH * dolphinScale * 1.34);
+          dolphinLightField.mesh.position.set(renderX, renderY, -0.24);
+          dolphinLightField.mesh.scale.set(diameter, diameter * 0.48, 1);
+          dolphinLightField.material.opacity = (lightTheme ? 0.018 : 0.088) * visibility;
+          addLight(renderX, renderY, diameter * 0.58, (lightTheme ? 0.055 : 0.18) * visibility);
+        }
+
+        const luminousParticleLayer = particleLayers[particleLayers.length - 1];
+        luminousParticleLayer?.particles.forEach((particle) => {
+          const twinkle = 0.68 + Math.sin(seconds * (0.72 + particle.speed) + particle.phase) * 0.28;
+          const renderX = lerp(particle.previousX, particle.x, alpha)
+            + Math.sin(seconds * 0.32 + particle.phase) * 0.05 * particle.drift;
+          const renderY = lerp(particle.previousY, particle.y, alpha)
+            + Math.cos(seconds * 0.27 + particle.phase) * 0.04 * particle.drift;
+          addLight(
+            renderX,
+            renderY,
+            0.48 + particle.size * particle.depthScale * 0.2,
+            (lightTheme ? 0.018 : 0.072) * twinkle * currentProfile.particle,
+          );
+        });
+
+        localLightSources.length = lightCount;
+        host.dataset.lightSourceCount = String(lightCount);
       };
 
       const simulateEntities = (seconds: number, delta: number) => {
@@ -1212,23 +1388,29 @@ export default function AmbientWorld() {
           const hue = entity.colorShift * 0.014;
           const lightness = entity.colorShift * 0.02;
           const coralTint = entity.relic === "coral" ? 0.1 + (entity.colorShift + 1) * 0.035 : 0;
+          const receivedLight = sampleLocalLightInfluence(entity.group.position, localLightSources, 0.78);
           entity.fill.color.copy(palette.surface)
             .lerp(palette.accentStrong, coralTint)
             .offsetHSL(hue, -0.016, lightness)
-            .lerp(palette.accent, entity.hit * 0.32);
+            .lerp(palette.accent, entity.hit * 0.32)
+            .lerp(lightTheme ? palette.accentStrong : palette.surface, receivedLight * (lightTheme ? 0.1 : 0.46));
           entity.edge.color.copy(lightTheme ? palette.line : palette.accent)
             .offsetHSL(hue, -0.012, lightness * 0.7)
-            .lerp(palette.accentStrong, entity.hit * 0.56);
+            .lerp(palette.accentStrong, entity.hit * 0.56)
+            .lerp(palette.surface, receivedLight * (lightTheme ? 0.08 : 0.38));
           entity.detail.color.copy(lightTheme ? palette.accentStrong : palette.surface)
             .offsetHSL(hue, -0.01, lightness * 0.65)
-            .lerp(palette.accent, entity.hit * 0.34);
+            .lerp(palette.accent, entity.hit * 0.34)
+            .lerp(palette.surface, receivedLight * (lightTheme ? 0.06 : 0.28));
           const bloom = entity.relic === "sea-bloom";
           entity.fill.opacity = ((bloom ? (lightTheme ? 0.045 : 0.025) : (lightTheme ? 0.24 : 0.12)) + entity.hit * 0.045)
-            * birthVisibility;
+            * birthVisibility + receivedLight * (lightTheme ? 0.035 : 0.13) * birthVisibility;
           entity.edge.opacity = (bloom ? (lightTheme ? 0.32 : 0.2) : (lightTheme ? 0.78 : 0.46))
-            * (currentProfile.entity + entity.hit * 0.1) * birthVisibility;
+            * (currentProfile.entity + entity.hit * 0.1) * birthVisibility
+            + receivedLight * (lightTheme ? 0.045 : 0.12) * birthVisibility;
           entity.detail.opacity = (bloom ? (lightTheme ? 0.72 : 0.46) : (lightTheme ? 0.6 : 0.34))
-            * (currentProfile.entity + entity.hit * 0.08) * birthVisibility;
+            * (currentProfile.entity + entity.hit * 0.08) * birthVisibility
+            + receivedLight * (lightTheme ? 0.035 : 0.1) * birthVisibility;
           if (entity.glow) {
             const shimmer = 0.5 + Math.sin(seconds * 0.74 + entity.phase) * 0.5;
             const glowBase = bloom ? 0.12 : 0.072;
@@ -1577,10 +1759,16 @@ export default function AmbientWorld() {
               Math.min(1, 0.32 + particle.depthOpacity * 0.92),
             );
             sharedColor.lerp(palette.accentStrong, Math.max(0, twinkle - 0.5) * 0.42);
+            sharedLightPosition.set(renderX, renderY);
+            const receivedLight = sampleLocalLightInfluence(sharedLightPosition, localLightSources, 0.72);
+            sharedColor.lerp(
+              palette.surface,
+              receivedLight * (lightTheme ? 0.12 : 0.48),
+            );
             layer.mesh.setColorAt(index, sharedColor);
             if (layer.glowMesh) {
-              const glowScale = scale * (1.82 + twinkle * 0.34);
-              sharedMatrix.makeScale(glowScale, glowScale, glowScale * 0.72);
+              const glowScale = 0.26 + scale * (0.2 + twinkle * 0.035);
+              sharedMatrix.makeScale(glowScale, glowScale, 1);
               sharedMatrix.setPosition(renderX, renderY, particle.z - 0.012);
               layer.glowMesh.setMatrixAt(index, sharedMatrix);
               sharedColor.lerp(palette.surface, lightTheme ? 0.1 : 0.24);
@@ -1596,7 +1784,7 @@ export default function AmbientWorld() {
           if (layer.glowMesh && layer.glowMaterial) {
             layer.glowMesh.instanceMatrix.needsUpdate = true;
             if (layer.glowMesh.instanceColor) layer.glowMesh.instanceColor.needsUpdate = true;
-            layer.glowMaterial.opacity = (lightTheme ? 0.028 : 0.115)
+            layer.glowMaterial.opacity = (lightTheme ? 0.03 : 0.14)
               * representativeProfile.opacity
               * (0.72 + currentProfile.particle * 0.28);
           }
@@ -1684,6 +1872,7 @@ export default function AmbientWorld() {
         if (schedule.droppedDelta > 0) {
           host.dataset.droppedTimeMs = schedule.droppedDelta.toFixed(3);
         }
+        updateLocalLightFields(renderSeconds, schedule.alpha);
         updateFlowRibbons(renderSeconds * 1000);
         renderEntities(renderSeconds, schedule.alpha);
         renderDolphin(schedule.alpha);
@@ -1808,8 +1997,9 @@ export default function AmbientWorld() {
       data-entity-visual="marine-still-life"
       data-contact-model="gentle-displacement"
       data-entity-model="fixed-drift"
-      data-glow-model="selective-additive"
+      data-glow-model="local-falloff-illumination"
       data-glow-theme="highlight"
+      data-light-source-count="0"
       data-jelly-motion="pulse-glide"
       data-jelly-propulsion="pulse-recoil"
       data-static-overlay="fallback-only"

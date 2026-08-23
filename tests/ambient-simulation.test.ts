@@ -13,6 +13,7 @@ import {
   sampleJellyLuminescence,
   sampleJellyPose,
   sampleJellyPulse,
+  sampleLocalLightInfluence,
   sampleOceanFlow,
   scheduleFixedSimulation,
   schoolingSteer,
@@ -67,6 +68,29 @@ describe("ambient entity rules", () => {
     expect(middle.opacity).toBeLessThan(near.opacity);
     expect(far.drift).toBeLessThan(near.drift);
     expect(far.interaction).toBeLessThan(near.interaction);
+  });
+
+  test("local light falls off smoothly and stops outside its radius", () => {
+    const source = [{ x: 0, y: 0, radius: 4, intensity: 0.8 }];
+    const center = sampleLocalLightInfluence({ x: 0, y: 0 }, source);
+    const middle = sampleLocalLightInfluence({ x: 2, y: 0 }, source);
+    const edge = sampleLocalLightInfluence({ x: 3.8, y: 0 }, source);
+    const outside = sampleLocalLightInfluence({ x: 4.1, y: 0 }, source);
+
+    expect(center).toBeCloseTo(0.8, 8);
+    expect(middle).toBeLessThan(center);
+    expect(edge).toBeLessThan(middle);
+    expect(edge).toBeGreaterThan(0);
+    expect(outside).toBe(0);
+  });
+
+  test("overlapping local lights accumulate but remain capped", () => {
+    const sources = [
+      { x: 0, y: 0, radius: 3, intensity: 0.7 },
+      { x: 0.2, y: 0, radius: 2, intensity: 0.65 },
+    ];
+
+    expect(sampleLocalLightInfluence({ x: 0, y: 0 }, sources, 0.9)).toBe(0.9);
   });
 
   test("jelly pulse contracts quickly, relaxes slowly and closes continuously", () => {
