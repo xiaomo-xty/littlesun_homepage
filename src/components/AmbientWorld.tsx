@@ -210,7 +210,16 @@ export default function AmbientWorld() {
   useEffect(() => {
     const host = hostRef.current;
     const canvas = host?.querySelector("canvas");
-    if (!host || !(canvas instanceof HTMLCanvasElement)) return;
+    const reportRuntimeFailure = (stage: string, error: unknown) => {
+      const message = error instanceof Error ? error.message : String(error);
+      window.dispatchEvent(new CustomEvent("homepage:ambient-diagnostic", {
+        detail: { stage, message },
+      }));
+    };
+    if (!host || !(canvas instanceof HTMLCanvasElement)) {
+      reportRuntimeFailure("mount", new Error("Ambient host or canvas is missing."));
+      return;
+    }
 
     const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
     const mobile = window.matchMedia("(max-width: 767px)").matches;
@@ -301,6 +310,7 @@ export default function AmbientWorld() {
         if (!destroyed) {
           host.dataset.runtime = "renderer-error";
           console.warn("[ambient] Renderer initialization unavailable; using the static ocean.", error);
+          reportRuntimeFailure("renderer", error);
           signalAmbientReady();
         }
         return;
@@ -2122,7 +2132,16 @@ export default function AmbientWorld() {
       };
     };
 
-    void initialize();
+    void initialize().catch((error) => {
+      if (destroyed) return;
+      host.dataset.backend = "static";
+      host.dataset.quality = "static";
+      host.dataset.runtime = "runtime-error";
+      document.documentElement.dataset.ambientBackend = "static";
+      console.warn("[ambient] Runtime initialization failed; using the static ocean.", error);
+      reportRuntimeFailure("runtime", error);
+      signalAmbientReady();
+    });
 
     return () => {
       destroyed = true;

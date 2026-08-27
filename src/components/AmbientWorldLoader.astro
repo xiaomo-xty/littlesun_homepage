@@ -16,8 +16,70 @@ import AmbientWorld from "./AmbientWorld";
   if (container instanceof HTMLElement && host instanceof HTMLElement) {
     const motionPreference = window.matchMedia("(prefers-reduced-motion: reduce)");
     const connection = navigator as Navigator & { connection?: { saveData?: boolean } };
-    const requestedBackend = new URLSearchParams(window.location.search).get("ambient");
+    const searchParams = new URLSearchParams(window.location.search);
+    const requestedBackend = searchParams.get("ambient");
+    const debugEnabled = searchParams.get("debug") === "1";
     let mounted = false;
+
+    if (debugEnabled) {
+      const panel = document.createElement("pre");
+      panel.id = "ambient-runtime-debug";
+      panel.setAttribute("role", "status");
+      panel.setAttribute("aria-live", "polite");
+      Object.assign(panel.style, {
+        position: "fixed",
+        top: "12px",
+        left: "12px",
+        zIndex: "2147483647",
+        maxWidth: "calc(100vw - 24px)",
+        margin: "0",
+        padding: "10px 12px",
+        border: "1px solid rgba(116, 203, 255, 0.72)",
+        borderRadius: "4px",
+        background: "rgba(5, 12, 18, 0.9)",
+        color: "#d9f2ff",
+        font: "12px/1.5 ui-monospace, SFMono-Regular, Consolas, monospace",
+        whiteSpace: "pre-wrap",
+        pointerEvents: "none",
+      });
+      document.body.append(panel);
+
+      let lastError = "none";
+      const updatePanel = () => {
+        const currentHost = document.querySelector(".ambient-world");
+        const dataset = currentHost instanceof HTMLElement ? currentHost.dataset : {};
+        panel.textContent = [
+          `requested: ${requestedBackend || "auto"}`,
+          `status: ${dataset.status || "missing"}`,
+          `backend: ${dataset.backend || "missing"}`,
+          `runtime: ${dataset.runtime || "missing"}`,
+          `motion: ${dataset.motion || "missing"}`,
+          `simulation tick: ${dataset.simulationTick || "0"}`,
+          `secure context: ${window.isSecureContext}`,
+          `WebGPU exposed: ${"gpu" in navigator}`,
+          `reduced motion: ${motionPreference.matches}`,
+          `Save-Data: ${Boolean(connection.connection?.saveData)}`,
+          `page visible: ${!document.hidden}`,
+          `last error: ${lastError}`,
+        ].join("\n");
+      };
+
+      window.addEventListener("homepage:ambient-diagnostic", (event) => {
+        const detail = (event as CustomEvent<{ stage?: string; message?: string }>).detail;
+        lastError = `${detail?.stage || "runtime"}: ${detail?.message || "unknown error"}`;
+        updatePanel();
+      });
+      window.addEventListener("error", (event) => {
+        lastError = `window: ${event.message || "unknown error"}`;
+        updatePanel();
+      });
+      window.addEventListener("unhandledrejection", (event) => {
+        lastError = `promise: ${event.reason instanceof Error ? event.reason.message : String(event.reason)}`;
+        updatePanel();
+      });
+      window.setInterval(updatePanel, 250);
+      updatePanel();
+    }
 
     const signalStaticReady = (reason: string) => {
       host.dataset.status = "ready";
@@ -46,9 +108,13 @@ import AmbientWorld from "./AmbientWorld";
         ]);
         hydrateRoot(container, createElement(Runtime));
       } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
         console.warn("[ambient] Dynamic runtime unavailable; using the static ocean.", error);
         mounted = false;
         signalStaticReady("runtime-error");
+        window.dispatchEvent(new CustomEvent("homepage:ambient-diagnostic", {
+          detail: { stage: "module", message },
+        }));
       }
     };
 
