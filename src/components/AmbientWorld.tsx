@@ -16,10 +16,11 @@ import {
   sampleLocalLightInfluence,
   sampleJellyPose,
   sampleOceanFlow,
-  scheduleCappedRender,
   scheduleFixedSimulation,
   wrapDriftingBody,
   type CollisionResult,
+  type JellyPoseSample,
+  type JellyPulseSample,
   type LocalLightSource,
   type RibbonPoint,
   type SolidBodyState,
@@ -28,15 +29,20 @@ import {
 } from "../lib/ambientSimulation";
 import {
   DOLPHIN_BODY_LENGTH,
+  DOLPHIN_JOINT_LENGTHS,
   advanceDolphinPathStream,
   advanceDolphinSpine,
   advanceRepulsionOffset,
   createDolphinPathStream,
   createDolphinSpine,
+  createDolphinSpineFrameCache,
+  createDolphinVertexBindings,
+  deformDolphinPositions,
   sampleDolphinBezierPath,
-  sampleSpineFrame,
+  updateDolphinSpineFrameCache,
   type DolphinPathStream,
   type DolphinSpinePoint,
+  type DolphinVertexBindings,
   type RepulsionState,
 } from "../lib/dolphinSimulation";
 import {
@@ -110,6 +116,7 @@ type ParticleLayer = {
   glowMaterial?: THREE.MeshBasicMaterial;
   particles: OceanParticle[];
   depthRange: readonly [number, number];
+  depthOpacity: number;
 };
 
 type JellyTentacle = {
@@ -128,6 +135,7 @@ type AmbientJelly = Vector2Like & {
   phase: number;
   scale: number;
   depth: number;
+  perspectiveScale: number;
   cycleDuration: number;
   pulseStrength: number;
   swimRate: number;
@@ -155,6 +163,8 @@ type SafeZone = { left: number; right: number; top: number; bottom: number };
 type DolphinPart = {
   attribute: THREE.BufferAttribute;
   basePositions: Float32Array;
+  targetPositions: Float32Array;
+  bindings: DolphinVertexBindings;
 };
 
 type FlowRibbon = {
@@ -226,7 +236,9 @@ export default function AmbientWorld() {
     const connection = (navigator as Navigator & { connection?: { saveData?: boolean } }).connection;
     const saveData = Boolean(connection?.saveData);
     const lowPower = (navigator.hardwareConcurrency || 8) <= 4 || saveData;
-    const requestedBackend = new URLSearchParams(window.location.search).get("ambient");
+    const searchParams = new URLSearchParams(window.location.search);
+    const requestedBackend = searchParams.get("ambient");
+    const debugEnabled = searchParams.get("debug") === "1";
     const runtimeAllowed = shouldStartAmbientRuntime({
       requestedBackend,
       reducedMotion: reduceMotion.matches,
@@ -262,7 +274,7 @@ export default function AmbientWorld() {
     host.dataset.jellySpeedMax = "0";
     host.dataset.coralAngleDeviation = "0";
     host.dataset.simulationStep = "60hz";
-    host.dataset.telemetryRate = "4hz";
+    host.dataset.telemetryRate = debugEnabled ? "4hz" : "off";
     host.dataset.detailRate = "static";
     host.dataset.runtime = "initializing";
     host.dataset.entityCount = "0";
@@ -341,7 +353,6 @@ export default function AmbientWorld() {
       const viewHalfHeight = 5;
       let frame = 0;
       let lastTime = performance.now();
-      let lastRenderedAt: number | null = null;
       let pageVisible = !document.hidden;
       let motionAllowed: boolean = runtimeAllowed;
       let safeZones: SafeZone[] = [];
@@ -352,6 +363,11 @@ export default function AmbientWorld() {
       let simulationAccumulator = 0;
       let simulationTick = 0;
       let telemetryNextAt = 0;
+      let debugLastFrameAt = 0;
+      let debugFrameCount = 0;
+      let debugFrameTimeTotal = 0;
+      let debugFrameTimeMax = 0;
+      let debugFramesOverBudget = 0;
       let ambientDetailNextAt = 0;
       const ambientDetailInterval = balanced ? 1000 / 15 : 1000 / 20;
       let lightTheme = true;
@@ -384,6 +400,18 @@ export default function AmbientWorld() {
       const flowForce: Vector2Like = { x: 0, y: 0 };
       const zoneForce = new THREE.Vector2();
       const obstacleForce = new THREE.Vector2();
+      const jellyPoseScratch: JellyPoseSample = {
+        contraction: 0,
+        thrust: 0,
+        bellScaleX: 1,
+        bellScaleY: 1,
+        tentacleRootScaleX: 1,
+        tentacleRootY: 0,
+        tentacleWave: 0,
+      };
+      const jellyPulseScratch: JellyPulseSample = { contraction: 0, thrust: 0 };
+      const tentacleRoot: Vector2Like = { x: 0, y: 0 };
+      const dolphinVelocity: Vector2Like = { x: 0, y: 0 };
 
       const lightFieldCanvas = document.createElement("canvas");
       lightFieldCanvas.width = 128;
@@ -496,6 +524,7 @@ export default function AmbientWorld() {
           glowMaterial,
           particles: layerParticles,
           depthRange: spec.depthRange,
+          depthOpacity: sampleAmbientDepth((spec.depthRange[0] + spec.depthRange[1]) * 0.5).opacity,
         };
       });
       const particles = particleLayers.flatMap((layer) => layer.particles);
@@ -561,6 +590,7 @@ export default function AmbientWorld() {
       };
 
       const createJelly = (x: number, y: number, scale: number, phase: number, depth: number) => {
+        const perspectiveScale = 0.82 + sampleAmbientDepth(depth).scale * 0.18;
         const fill = register(new THREE.MeshBasicMaterial({
           transparent: true,
           side: THREE.DoubleSide,
@@ -642,6 +672,7 @@ export default function AmbientWorld() {
           vx: 0.04 + random() * 0.07,
           vy: 0.02 + random() * 0.04,
           depth,
+          perspectiveScale,
           phase,
           scale,
           cycleDuration: 2.15 + random() * 0.85,
@@ -1000,9 +1031,12 @@ export default function AmbientWorld() {
       ) => {
         const attribute = geometry.getAttribute("position") as THREE.BufferAttribute;
         attribute.setUsage(THREE.DynamicDrawUsage);
+        const basePositions = new Float32Array(attribute.array as ArrayLike<number>);
         dolphinParts.push({
           attribute,
-          basePositions: new Float32Array(attribute.array as ArrayLike<number>),
+          basePositions,
+          targetPositions: attribute.array as Float32Array,
+          bindings: createDolphinVertexBindings(basePositions, DOLPHIN_JOINT_LENGTHS.length + 1),
         });
         object.renderOrder = renderOrder;
         object.frustumCulled = false;
@@ -1076,37 +1110,23 @@ export default function AmbientWorld() {
       let dolphinSpine: DolphinSpinePoint[] = createDolphinSpine({ x: 0, y: 0 }, 0, dolphinScale);
       let previousDolphinSpine = dolphinSpine.map((point) => ({ ...point }));
       let renderDolphinSpine = dolphinSpine.map((point) => ({ ...point }));
+      const dolphinFrameCache = createDolphinSpineFrameCache(dolphinSpine.length);
+      const dolphinAngleWorkspace = new Float64Array(dolphinSpine.length - 1);
       const dolphinHead = new THREE.Vector2();
       const dolphinForward = new THREE.Vector2(1, 0);
       const dolphinRepulsion: RepulsionState = { x: 0, y: 0, vx: 0, vy: 0 };
       let dolphinTextVisibility = 1;
 
       const updateDolphinGeometry = (spine: readonly DolphinSpinePoint[]) => {
-        const headFrame = sampleSpineFrame(spine, 0);
-        const tailFrame = sampleSpineFrame(spine, 1);
+        updateDolphinSpineFrameCache(dolphinFrameCache, spine);
         dolphinParts.forEach((part) => {
-          for (let index = 0; index < part.basePositions.length; index += 3) {
-            const baseX = part.basePositions[index];
-            const baseY = part.basePositions[index + 1] * dolphinScale;
-            const longitudinal = -baseX;
-            let frameSample;
-            let along = 0;
-            if (longitudinal < 0) {
-              frameSample = headFrame;
-              along = -longitudinal * dolphinScale;
-            } else if (longitudinal > DOLPHIN_BODY_LENGTH) {
-              frameSample = tailFrame;
-              along = -(longitudinal - DOLPHIN_BODY_LENGTH) * dolphinScale;
-            } else {
-              frameSample = sampleSpineFrame(spine, longitudinal / DOLPHIN_BODY_LENGTH);
-            }
-            part.attribute.setXYZ(
-              index / 3,
-              frameSample.position.x + frameSample.tangent.x * along + frameSample.normal.x * baseY,
-              frameSample.position.y + frameSample.tangent.y * along + frameSample.normal.y * baseY,
-              part.basePositions[index + 2],
-            );
-          }
+          deformDolphinPositions(
+            part.targetPositions,
+            part.basePositions,
+            part.bindings,
+            dolphinFrameCache,
+            dolphinScale,
+          );
           part.attribute.needsUpdate = true;
         });
       };
@@ -1306,13 +1326,11 @@ export default function AmbientWorld() {
 
         jellies.forEach((jelly) => {
           const pulsePhase = seconds / jelly.cycleDuration + jelly.phase / (Math.PI * 2);
-          const luminescence = sampleJellyLuminescence(pulsePhase);
-          const depthProfile = sampleAmbientDepth(jelly.depth);
-          const perspectiveScale = 0.82 + depthProfile.scale * 0.18;
+          const luminescence = sampleJellyLuminescence(pulsePhase, jellyPulseScratch);
           const renderX = lerp(jelly.previousX, jelly.x, alpha);
           const renderY = lerp(jelly.previousY, jelly.y, alpha);
           const visibility = (0.72 + jelly.depth * 0.28) * currentProfile.jelly;
-          const diameter = jelly.scale * perspectiveScale * (4.9 + luminescence * 1.1);
+          const diameter = jelly.scale * jelly.perspectiveScale * (4.9 + luminescence * 1.1);
           jelly.lightField.mesh.position.set(renderX, renderY, -3.28 + jelly.depth * 2.4);
           jelly.lightField.mesh.scale.set(diameter * 1.16, diameter, 1);
           jelly.lightField.material.opacity = (lightTheme
@@ -1555,7 +1573,7 @@ export default function AmbientWorld() {
         jellies.forEach((jelly) => {
           const pulsePhase = seconds / jelly.cycleDuration + jelly.phase / (Math.PI * 2);
           const speedRatio = Math.hypot(jelly.vx, jelly.vy) / AMBIENT_JELLY_MAX_SPEED;
-          const pose = sampleJellyPose(pulsePhase, speedRatio);
+          const pose = sampleJellyPose(pulsePhase, speedRatio, jellyPoseScratch);
           sampleOceanFlow(jelly, seconds + jelly.phase, flowForce);
           const wander = Math.sin(seconds * jelly.swimRate + jelly.phase) * 0.13
             + Math.sin(seconds * jelly.swimRate * 0.47 + jelly.phase * 1.7) * 0.05;
@@ -1621,12 +1639,11 @@ export default function AmbientWorld() {
           }
 
           jelly.tentacles.forEach((tentacle) => {
+            tentacleRoot.x = tentacle.offset * pose.tentacleRootScaleX;
+            tentacleRoot.y = pose.tentacleRootY;
             advanceRibbonChain(
               tentacle.points,
-              {
-                x: tentacle.offset * pose.tentacleRootScaleX,
-                y: pose.tentacleRootY,
-              },
+              tentacleRoot,
               delta,
               0.158 * (1 - pose.contraction * 0.04),
               16,
@@ -1640,11 +1657,9 @@ export default function AmbientWorld() {
         jellies.forEach((jelly) => {
           const pulsePhase = seconds / jelly.cycleDuration + jelly.phase / (Math.PI * 2);
           const speedRatio = Math.hypot(jelly.vx, jelly.vy) / AMBIENT_JELLY_MAX_SPEED;
-          const pose = sampleJellyPose(pulsePhase, speedRatio);
-          const luminescence = sampleJellyLuminescence(pulsePhase);
+          const pose = sampleJellyPose(pulsePhase, speedRatio, jellyPoseScratch);
+          const luminescence = sampleJellyLuminescence(pulsePhase, jellyPulseScratch);
           const ambientBreath = Math.sin(seconds * 0.54 + jelly.phase) * 0.008;
-          const depthProfile = sampleAmbientDepth(jelly.depth);
-          const perspectiveScale = 0.82 + depthProfile.scale * 0.18;
           const renderHeading = lerpAngle(jelly.previousHeading, jelly.heading, alpha);
           jelly.group.position.set(
             lerp(jelly.previousX, jelly.x, alpha),
@@ -1654,8 +1669,8 @@ export default function AmbientWorld() {
           jelly.group.rotation.z = renderHeading - Math.PI / 2
             + Math.sin(seconds * 0.38 + jelly.phase) * 0.012;
           jelly.group.scale.set(
-            jelly.scale * perspectiveScale * (pose.bellScaleX + ambientBreath),
-            jelly.scale * perspectiveScale * (pose.bellScaleY - ambientBreath * 0.35),
+            jelly.scale * jelly.perspectiveScale * (pose.bellScaleX + ambientBreath),
+            jelly.scale * jelly.perspectiveScale * (pose.bellScaleY - ambientBreath * 0.35),
             1,
           );
           const visibility = (0.72 + jelly.depth * 0.28) * currentProfile.jelly;
@@ -1745,16 +1760,27 @@ export default function AmbientWorld() {
           routeSample.position.x + dolphinRepulsion.x,
           routeSample.position.y + dolphinRepulsion.y + currentProfile.dolphinBiasY,
         );
-        advanceDolphinSpine(dolphinSpine, dolphinHead, dolphinSwimClock, delta, dolphinScale);
-        const headFrame = sampleSpineFrame(dolphinSpine, 0);
-        dolphinForward.set(headFrame.tangent.x, headFrame.tangent.y);
+        advanceDolphinSpine(
+          dolphinSpine,
+          dolphinHead,
+          dolphinSwimClock,
+          delta,
+          dolphinScale,
+          undefined,
+          undefined,
+          dolphinAngleWorkspace,
+        );
+        const head = dolphinSpine[0];
+        const neck = dolphinSpine[1];
+        const forwardX = head.x - neck.x;
+        const forwardY = head.y - neck.y;
+        const forwardLength = Math.max(0.0001, Math.hypot(forwardX, forwardY));
+        dolphinForward.set(forwardX / forwardLength, forwardY / forwardLength);
       };
 
       const interactDolphinWithEntities = () => {
-        const dolphinVelocity = {
-          x: dolphinForward.x * (0.78 + currentProfile.dolphinSpeed * 0.36),
-          y: dolphinForward.y * (0.78 + currentProfile.dolphinSpeed * 0.36),
-        };
+        dolphinVelocity.x = dolphinForward.x * (0.78 + currentProfile.dolphinSpeed * 0.36);
+        dolphinVelocity.y = dolphinForward.y * (0.78 + currentProfile.dolphinSpeed * 0.36);
         entities.forEach((entity) => {
           let nearestPoint = dolphinSpine[0];
           let nearestDistance = Number.POSITIVE_INFINITY;
@@ -1907,15 +1933,13 @@ export default function AmbientWorld() {
           });
           layer.mesh.instanceMatrix.needsUpdate = true;
           if (refreshLighting && layer.mesh.instanceColor) layer.mesh.instanceColor.needsUpdate = true;
-          const representativeDepth = (layer.depthRange[0] + layer.depthRange[1]) * 0.5;
-          const representativeProfile = sampleAmbientDepth(representativeDepth);
-          layer.material.opacity = representativeProfile.opacity
+          layer.material.opacity = layer.depthOpacity
             * (balanced ? 0.55 : 0.62) * (0.7 + currentProfile.particle * 0.3);
           if (layer.glowMesh && layer.glowMaterial) {
             layer.glowMesh.instanceMatrix.needsUpdate = true;
             if (refreshLighting && layer.glowMesh.instanceColor) layer.glowMesh.instanceColor.needsUpdate = true;
             layer.glowMaterial.opacity = (lightTheme ? 0.03 : 0.14)
-              * representativeProfile.opacity
+              * layer.depthOpacity
               * (0.72 + currentProfile.particle * 0.28);
           }
         });
@@ -1969,12 +1993,14 @@ export default function AmbientWorld() {
 
       const render = (time: number) => {
         if (destroyed || !pageVisible || !motionAllowed) return;
-        const renderSchedule = scheduleCappedRender(lastRenderedAt, time);
-        lastRenderedAt = renderSchedule.renderedAt;
-        if (!renderSchedule.shouldRender) {
-          frame = window.requestAnimationFrame(render);
-          return;
+        if (debugEnabled && debugLastFrameAt > 0) {
+          const debugFrameTime = time - debugLastFrameAt;
+          debugFrameCount += 1;
+          debugFrameTimeTotal += debugFrameTime;
+          debugFrameTimeMax = Math.max(debugFrameTimeMax, debugFrameTime);
+          if (debugFrameTime > 20) debugFramesOverBudget += 1;
         }
+        debugLastFrameAt = time;
         const frameDelta = Math.max(0, (time - lastTime) / 1000);
         lastTime = time;
         const schedule = scheduleFixedSimulation(simulationAccumulator, frameDelta);
@@ -1989,7 +2015,7 @@ export default function AmbientWorld() {
         );
         const refreshAmbientDetail = time >= ambientDetailNextAt;
         if (refreshAmbientDetail) ambientDetailNextAt = time + ambientDetailInterval;
-        if (time >= telemetryNextAt) {
+        if (debugEnabled && time >= telemetryNextAt) {
           telemetryNextAt = time + 250;
           host.dataset.simulationTick = String(simulationTick);
           host.dataset.entitySpeedMax = entities.reduce(
@@ -2009,8 +2035,19 @@ export default function AmbientWorld() {
             return Math.max(maximum, deviation);
           }, 0).toFixed(3);
           host.dataset.lightSourceCount = String(localLightSources.length);
+          if (debugFrameCount > 0) {
+            const averageFrameTime = debugFrameTimeTotal / debugFrameCount;
+            host.dataset.renderFps = (1000 / averageFrameTime).toFixed(1);
+            host.dataset.frameTimeAverage = averageFrameTime.toFixed(2);
+            host.dataset.frameTimeMax = debugFrameTimeMax.toFixed(2);
+            host.dataset.framesOverBudget = String(debugFramesOverBudget);
+            debugFrameCount = 0;
+            debugFrameTimeTotal = 0;
+            debugFrameTimeMax = 0;
+            debugFramesOverBudget = 0;
+          }
         }
-        if (schedule.droppedDelta > 0) {
+        if (debugEnabled && schedule.droppedDelta > 0) {
           host.dataset.droppedTimeMs = schedule.droppedDelta.toFixed(3);
         }
         updateLocalLightFields(renderSeconds, schedule.alpha);
@@ -2031,7 +2068,7 @@ export default function AmbientWorld() {
         window.cancelAnimationFrame(frame);
         if (!pageVisible || !motionAllowed || destroyed) return;
         lastTime = performance.now();
-        lastRenderedAt = null;
+        debugLastFrameAt = 0;
         simulationAccumulator = 0;
         frame = window.requestAnimationFrame(render);
       };
@@ -2174,7 +2211,7 @@ export default function AmbientWorld() {
       data-jelly-speed-max="0"
       data-coral-angle-deviation="0"
       data-simulation-step="60hz"
-      data-render-cap="60fps"
+      data-render-cap="display-refresh"
       data-detail-rate="static"
       data-motion="full"
       data-runtime="ssr"

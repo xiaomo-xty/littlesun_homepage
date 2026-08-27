@@ -422,6 +422,10 @@ main {
   display: grid;
   place-items: center;
   transform-origin: center;
+  animation: none;
+}
+
+.section-guide a[data-motion-state="visible"] .section-guide-signal {
   animation: section-guide-drift 4.8s cubic-bezier(0.45, 0, 0.55, 1) infinite;
 }
 
@@ -432,6 +436,9 @@ main {
 
 .section-guide.is-up .section-guide-signal {
   transform: rotate(180deg);
+}
+
+.section-guide.is-up a[data-motion-state="visible"] .section-guide-signal {
   animation-name: section-guide-drift-up;
 }
 
@@ -517,6 +524,10 @@ main {
   width: 9px;
   height: 20px;
   background: var(--accent);
+  animation: none;
+}
+
+.typewriter-line[data-active="true"] .typewriter-caret {
   animation: typewriter-blink 720ms steps(2, end) infinite;
 }
 
@@ -743,7 +754,7 @@ h3 {
   opacity: 0.24;
   pointer-events: none;
   transition: opacity 420ms ease;
-  will-change: transform;
+  will-change: auto;
 }
 
 .visual-stage-light-field i {
@@ -763,6 +774,15 @@ h3 {
   );
   filter: blur(3px);
   transform: translate3d(-18%, 0, 0) rotate(28deg);
+  animation: none;
+  will-change: auto;
+}
+
+.hero-stage-entrance[data-motion-state="visible"] .visual-stage-light-field {
+  will-change: transform;
+}
+
+.hero-stage-entrance[data-motion-state="visible"] .visual-stage-light-field i {
   animation: visual-stage-light-sweep 12.8s cubic-bezier(0.45, 0, 0.2, 1) infinite;
   will-change: transform, opacity;
 }
@@ -1304,7 +1324,7 @@ h3 {
   inset: 0;
   width: 100%;
   min-height: 690px;
-  will-change: transform, opacity;
+  will-change: auto;
 }
 
 .transition-card {
@@ -1339,6 +1359,16 @@ h3 {
   cursor: pointer;
   transform-origin: 18% 82%;
   transform-style: preserve-3d;
+  will-change: auto;
+}
+
+.deck-stage[data-in-view="true"] .deck-motion-shell,
+.deck-stage[aria-busy="true"] .deck-motion-shell {
+  will-change: transform, opacity;
+}
+
+.deck-stage[data-in-view="true"] .deck-preview-card,
+.deck-stage[aria-busy="true"] .deck-preview-card {
   will-change: transform;
 }
 
@@ -1374,6 +1404,15 @@ h3 {
   box-shadow: 0 24px 54px var(--shadow);
 }
 
+.hero-section[data-reveal-state="hidden"] .command-secondary,
+.hero-section[data-reveal-state="hidden"] .visual-stage-surface,
+[data-reveal-state="hidden"] .section-heading::before,
+[data-project-stage][data-reveal-state="hidden"] .deck-preview-face,
+[data-project-stage][data-reveal-state="hidden"] .project-card {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
 .card-face {
   position: absolute;
   inset: 0;
@@ -1405,7 +1444,7 @@ h3 {
   opacity: 0;
   pointer-events: none;
   transition: opacity 360ms ease;
-  will-change: transform;
+  will-change: auto;
 }
 
 .card-material-light i {
@@ -1425,7 +1464,7 @@ h3 {
   );
   filter: blur(4px);
   animation: none;
-  will-change: transform, opacity;
+  will-change: auto;
 }
 
 .deck-motion-shell[data-role="active-shell"] .card-material-light {
@@ -1434,6 +1473,7 @@ h3 {
 
 .deck-stage[data-in-view="true"] [data-role="active-shell"] .card-material-light i {
   animation: card-material-sweep 11.2s cubic-bezier(0.45, 0, 0.2, 1) 1.4s infinite;
+  will-change: transform, opacity;
 }
 
 .card-front > header,
@@ -2254,6 +2294,10 @@ h3 {
   height: 8px;
   background: var(--accent);
   box-shadow: 0 0 16px color-mix(in srgb, var(--accent) 78%, transparent);
+  animation: none;
+}
+
+.contact-section[data-reveal-state="visible"] .contact-signal-buoy i {
   animation: contact-signal-pulse 2.8s ease-in-out infinite;
 }
 

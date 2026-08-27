@@ -2,9 +2,7 @@
 import AmbientWorld from "./AmbientWorld";
 ---
 
-<div data-ambient-root>
-  <AmbientWorld />
-</div>
+<div data-ambient-root><AmbientWorld /></div>
 
 <script>
   import { shouldStartAmbientRuntime } from "../lib/ambientPolicy";
@@ -55,6 +53,9 @@ import AmbientWorld from "./AmbientWorld";
           `runtime: ${dataset.runtime || "missing"}`,
           `motion: ${dataset.motion || "missing"}`,
           `simulation tick: ${dataset.simulationTick || "0"}`,
+          `render fps: ${dataset.renderFps || "sampling"}`,
+          `frame ms avg/max: ${dataset.frameTimeAverage || "-"} / ${dataset.frameTimeMax || "-"}`,
+          `frames >20ms: ${dataset.framesOverBudget || "0"}`,
           `secure context: ${window.isSecureContext}`,
           `WebGPU exposed: ${"gpu" in navigator}`,
           `reduced motion: ${motionPreference.matches}`,

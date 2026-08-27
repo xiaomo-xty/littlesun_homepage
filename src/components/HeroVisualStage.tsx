@@ -9,7 +9,6 @@ import {
 import {
   AnimatePresence,
   motion,
-  useAnimationFrame,
   useMotionValue,
   useReducedMotion,
   useSpring,
@@ -66,6 +65,7 @@ export default function HeroVisualStage() {
   const [activeIndex, setActiveIndex] = useState(0);
   const [direction, setDirection] = useState(1);
   const [experienceReady, setExperienceReady] = useState(false);
+  const [stageInView, setStageInView] = useState(false);
   const pointerStart = useRef<number | null>(null);
   const pointerActive = useRef(false);
   const reducedMotion = useReducedMotion();
@@ -93,12 +93,39 @@ export default function HeroVisualStage() {
     return () => window.removeEventListener("homepage:experience-ready", handleReady);
   }, []);
 
-  useAnimationFrame((time) => {
-    if (!experienceReady || reducedMotion || pointerActive.current) return;
-    const idle = sampleIdleParallax(time, 12_800, 0.15, 0.1, 0.35);
-    pointerX.set(idle.x);
-    pointerY.set(idle.y);
-  });
+  useEffect(() => {
+    const section = document.querySelector<HTMLElement>("[data-reveal='hero']");
+    const syncPresence = () => setStageInView(section?.dataset.revealState === "visible");
+    const handlePresence = (event: Event) => {
+      const detail = (event as CustomEvent<{ id?: string; visible?: boolean }>).detail;
+      if (detail?.id === "top") setStageInView(Boolean(detail.visible));
+    };
+
+    window.addEventListener("homepage:section-presence", handlePresence);
+    const presenceObserver = section ? new MutationObserver(syncPresence) : null;
+    presenceObserver?.observe(section!, { attributes: true, attributeFilter: ["data-reveal-state"] });
+    const frame = window.requestAnimationFrame(syncPresence);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      presenceObserver?.disconnect();
+      window.removeEventListener("homepage:section-presence", handlePresence);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!experienceReady || reducedMotion || !stageInView) return;
+    let frame = 0;
+    const updateIdleParallax = (time: number) => {
+      if (!pointerActive.current) {
+        const idle = sampleIdleParallax(time, 12_800, 0.15, 0.1, 0.35);
+        pointerX.set(idle.x);
+        pointerY.set(idle.y);
+      }
+      frame = window.requestAnimationFrame(updateIdleParallax);
+    };
+    frame = window.requestAnimationFrame(updateIdleParallax);
+    return () => window.cancelAnimationFrame(frame);
+  }, [experienceReady, pointerX, pointerY, reducedMotion, stageInView]);
 
   const selectMode = (nextIndex: number) => {
     const wrapped = wrapIndex(nextIndex);

@@ -9,7 +9,6 @@ import {
   type PanInfo,
   type MotionValue,
   useAnimate,
-  useAnimationFrame,
   useMotionValue,
   useReducedMotion,
   useSpring,
@@ -260,12 +259,20 @@ export default function ProjectDeck() {
     stageRef.current?.removeAttribute("data-pointer-active");
   };
 
-  useAnimationFrame((time) => {
-    if (reduceMotion || pointerActiveRef.current || !stageInView || !ready || transition || detailsOpen) return;
-    const idle = sampleIdleParallax(time, 11_200, 0.06, 0.045, 1.2);
-    pointerX.set(idle.x);
-    pointerY.set(idle.y);
-  });
+  useEffect(() => {
+    if (reduceMotion || !stageInView || !ready || transition || detailsOpen) return;
+    let frame = 0;
+    const updateIdleParallax = (time: number) => {
+      if (!pointerActiveRef.current) {
+        const idle = sampleIdleParallax(time, 11_200, 0.06, 0.045, 1.2);
+        pointerX.set(idle.x);
+        pointerY.set(idle.y);
+      }
+      frame = window.requestAnimationFrame(updateIdleParallax);
+    };
+    frame = window.requestAnimationFrame(updateIdleParallax);
+    return () => window.cancelAnimationFrame(frame);
+  }, [detailsOpen, pointerX, pointerY, ready, reduceMotion, stageInView, transition]);
 
   useEffect(() => {
     const section = document.querySelector<HTMLElement>("[data-project-stage]");

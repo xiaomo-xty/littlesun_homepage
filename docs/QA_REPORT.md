@@ -982,3 +982,32 @@ v0.7 满足海洋静物、双主题眼睛修正、固定时间步、WebGPU 优�
 - `git diff --check`：通过。
 - 本轮没有可控浏览器 p95 数据，未用推算结果替代浏览器实测。
 - 未修改 `D:\project\blog`。
+
+## 2026-08-28 / v0.25 滚动帧预算验收
+
+### 性能与生命周期
+
+- 海豚缓存变形与原参考采样器的 Float32 输出一致；复用角度工作区与原脊柱求解结果逐点一致。
+- 固定逻辑仍为 `60 Hz`，渲染改为跟随显示器 RAF，不再在 90/144 Hz 设备产生 45/48 FPS 的周期性混叠。
+- Hero、项目卡、打字器和 CSS 循环均由所属区块可见性控制，离屏后停止，返回后恢复原效果。
+- 普通访问 `data-telemetry-rate="off"`，不创建诊断面板或 `250 ms` 诊断写入；`?debug=1` 可读取帧预算。
+- 首屏 Ambient、项目和文章均无 hydration mismatch；延迟 island 完成 hydration 后再接收入退场属性。
+
+### 浏览器矩阵
+
+| 场景 | 结果 |
+| --- | --- |
+| 桌面 / WebGPU / 首屏静置 | `59.9 FPS`，平均 `16.69 ms`，最大 `16.80 ms`，超过 `20 ms` 为 0 |
+| 桌面 / WebGPU / 连续上下滚动 | 10 组样本为 `59.9-60.0 FPS`，最大 `16.7-16.9 ms`，超过 `20 ms` 均为 0 |
+| 桌面 / Hero 离屏 | Typewriter 为 inactive，Hero sweep 为 `animation-name: none` |
+| 桌面 / 项目可见 | Project idle 与 card material sweep 恢复，项目/文章延迟 hydration 无告警 |
+| `375 x 844` / WebGPU | balanced 档，`59.9 FPS / 16.69 ms`，最大 `16.80 ms`，横向溢出为 0 |
+| 干净开发缓存 | WebGPU 为 `ready / webgpu`，warning 与 error 均为 0 |
+
+### 自动化门禁
+
+- `bun test`：46 passed、0 failed。
+- `bun run check`：32 个文件，0 errors、0 warnings、0 hints。
+- `bun run build`：2 个静态路由构建成功。
+- `git diff --check`：通过。
+- 未修改 `D:\project\blog`。

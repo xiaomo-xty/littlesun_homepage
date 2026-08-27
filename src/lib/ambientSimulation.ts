@@ -68,7 +68,6 @@ export type FixedStepSchedule = {
 };
 
 export const AMBIENT_FIXED_STEP = 1 / 60;
-export const AMBIENT_RENDER_FPS = 60;
 export const AMBIENT_MAX_FIXED_STEPS = 8;
 export const AMBIENT_ENTITY_RESTITUTION = 0.08;
 export const AMBIENT_ENTITY_MAX_SPEED = 0.3;
@@ -99,22 +98,6 @@ export function scheduleFixedSimulation(
     alpha: Math.max(0, Math.min(1, nextAccumulator / safeStep)),
     simulatedDelta: count * safeStep,
     droppedDelta: safeFrameDelta - acceptedDelta,
-  };
-}
-
-export function scheduleCappedRender(
-  previousRenderedAt: number | null,
-  now: number,
-  targetFps = AMBIENT_RENDER_FPS,
-) {
-  const interval = 1000 / Math.max(1, targetFps + 0.5);
-  if (previousRenderedAt !== null && now - previousRenderedAt < interval) {
-    return { shouldRender: false, renderedAt: previousRenderedAt };
-  }
-  const elapsed = previousRenderedAt === null ? interval : now - previousRenderedAt;
-  return {
-    shouldRender: true,
-    renderedAt: now - (elapsed % interval),
   };
 }
 
@@ -233,7 +216,10 @@ export function sampleLocalLightInfluence(
   return Math.min(Math.max(0, maximum), influence);
 }
 
-export function sampleJellyPulse(phase: number): JellyPulseSample {
+export function sampleJellyPulse(
+  phase: number,
+  output: JellyPulseSample = { contraction: 0, thrust: 0 },
+): JellyPulseSample {
   const wrapped = ((phase % 1) + 1) % 1;
   const contractionEnd = 0.18;
   const contraction = wrapped < contractionEnd
@@ -243,25 +229,40 @@ export function sampleJellyPulse(phase: number): JellyPulseSample {
     ? Math.sin(wrapped / contractionEnd * Math.PI) ** 2
     : 0;
   const thrust = rawThrust < 1e-12 ? 0 : rawThrust;
-  return { contraction, thrust };
+  output.contraction = contraction;
+  output.thrust = thrust;
+  return output;
 }
 
-export function sampleJellyPose(phase: number, speedRatio = 0): JellyPoseSample {
-  const pulse = sampleJellyPulse(phase);
+export function sampleJellyPose(
+  phase: number,
+  speedRatio = 0,
+  output: JellyPoseSample = {
+    contraction: 0,
+    thrust: 0,
+    bellScaleX: 1,
+    bellScaleY: 1,
+    tentacleRootScaleX: 1,
+    tentacleRootY: 0,
+    tentacleWave: 0,
+  },
+): JellyPoseSample {
+  const pulse = sampleJellyPulse(phase, output);
   const speed = Math.max(0, Math.min(1, speedRatio));
-  return {
-    ...pulse,
-    bellScaleX: 1 - pulse.contraction * 0.13,
-    bellScaleY: 1 + pulse.contraction * 0.055 - pulse.thrust * 0.025,
-    tentacleRootScaleX: 1 - pulse.contraction * 0.1,
-    tentacleRootY: -0.03 + pulse.contraction * 0.055 - pulse.thrust * 0.018,
-    tentacleWave: 0.006 + speed * 0.012 + pulse.thrust * 0.006,
-  };
+  output.bellScaleX = 1 - pulse.contraction * 0.13;
+  output.bellScaleY = 1 + pulse.contraction * 0.055 - pulse.thrust * 0.025;
+  output.tentacleRootScaleX = 1 - pulse.contraction * 0.1;
+  output.tentacleRootY = -0.03 + pulse.contraction * 0.055 - pulse.thrust * 0.018;
+  output.tentacleWave = 0.006 + speed * 0.012 + pulse.thrust * 0.006;
+  return output;
 }
 
-export function sampleJellyLuminescence(phase: number) {
+export function sampleJellyLuminescence(
+  phase: number,
+  pulseOutput?: JellyPulseSample,
+) {
   const wrapped = ((phase % 1) + 1) % 1;
-  const pulse = sampleJellyPulse(wrapped);
+  const pulse = sampleJellyPulse(wrapped, pulseOutput);
   const riseProgress = Math.max(0, Math.min(1, (wrapped - 0.035) / 0.09));
   const smoothRise = riseProgress * riseProgress * (3 - 2 * riseProgress);
   const afterglow = smoothRise * Math.exp(-Math.max(0, wrapped - 0.14) * 5.2);
