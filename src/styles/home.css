@@ -2475,6 +2475,7 @@ a.contact-channel:hover .contact-channel-arrow {
 
 .contact-inner footer {
   display: flex;
+  align-items: center;
   justify-content: space-between;
   gap: 30px;
   margin-top: 44px;
@@ -2482,7 +2483,18 @@ a.contact-channel:hover .contact-channel-arrow {
   color: var(--muted);
 }
 
+.contact-inner footer .filing-links {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px 18px;
+}
+
 .contact-inner footer .filing-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   font-size: 12px;
   line-height: 1.6;
   white-space: nowrap;
@@ -2495,6 +2507,20 @@ a.contact-channel:hover .contact-channel-arrow {
 .contact-inner footer .filing-link:hover {
   color: var(--ink);
   opacity: 1;
+}
+
+.contact-inner footer .filing-link:focus-visible {
+  color: var(--ink);
+  opacity: 1;
+  outline: 2px solid var(--accent);
+  outline-offset: 4px;
+}
+
+.public-security-filing img {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 20px;
+  object-fit: contain;
 }
 
 @keyframes contact-signal-pulse {
@@ -3150,8 +3176,10 @@ a.contact-channel:hover .contact-channel-arrow {
     font-size: 13px;
   }
 
-  .contact-inner footer .filing-link {
+  .contact-inner footer .filing-links {
     grid-column: 1 / -1;
+    justify-content: flex-start;
+    gap: 8px 14px;
   }
 }
 
