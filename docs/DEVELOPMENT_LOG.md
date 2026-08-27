@@ -1401,3 +1401,20 @@
 - `bun test` 为 43 passed；`bun run check` 为 0 errors、0 warnings、0 hints；生产构建成功。
 - 本地 HTTP 验证确认首页、备案号、查询链接和 PNG 图标均正常；浏览器控制层拒绝访问 localhost，因此不记录桌面或移动截图验收。
 - 未修改 `D:\project\blog`。
+
+## 2026-08-28 / v0.23 Explicit Ambient Runtime
+
+今天完成：
+
+- 从 `develop` 创建 `fix/v0.23-explicit-ambient-runtime`，修复显式 WebGPU 预览仍可能被自动降级为静态背景的问题。
+- 将 `?ambient=webgpu` 与 `?ambient=webgl2` 定义为主动动态选择，覆盖浏览器 Save-Data 和 reduced-motion 自动降级；`?ambient=static` 仍始终保持静态。
+- 统一加载器与 Ambient React 运行时的策略判断，移除两层策略结果不一致的可能。
+- 为动态模块失败、渲染器初始化失败和成功后端补充 `data-runtime` 状态；渲染器失败时输出明确控制台警告，不再静默变成静态海洋。
+
+当前证据：
+
+- 新增显式动态覆盖回归测试，`bun test` 为 44 passed。
+- `bun run check` 为 0 errors、0 warnings、0 hints；生产构建成功；`git diff --check` 通过。
+- 默认无参数访问仍尊重低动态和 Save-Data，性能预算路径不变。
+- 浏览器控制层拒绝访问 localhost，因此动态视觉结果需在已打开的本地预览标签刷新确认。
+- 未修改 `D:\project\blog`。

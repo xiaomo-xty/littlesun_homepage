@@ -53,13 +53,23 @@ import AmbientWorld from "./AmbientWorld";
     };
 
     const applyPolicy = () => {
+      const saveData = Boolean(connection.connection?.saveData);
       const shouldStart = shouldStartAmbientRuntime({
         requestedBackend,
         reducedMotion: motionPreference.matches,
-        saveData: Boolean(connection.connection?.saveData),
+        saveData,
       });
       if (shouldStart) void mountRuntime();
-      else if (!mounted) signalStaticReady(motionPreference.matches ? "reduced-motion" : "static-policy");
+      else if (!mounted) {
+        const reason = requestedBackend === "static"
+          ? "explicit-static"
+          : motionPreference.matches
+            ? "reduced-motion"
+            : saveData
+              ? "save-data"
+              : "static-policy";
+        signalStaticReady(reason);
+      }
     };
 
     motionPreference.addEventListener("change", applyPolicy);

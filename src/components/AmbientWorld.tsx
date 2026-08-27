@@ -46,6 +46,7 @@ import {
   createDolphinPectoralFinShape,
   createDolphinTailShape,
 } from "../lib/dolphinGeometry";
+import { shouldStartAmbientRuntime } from "../lib/ambientPolicy";
 
 type Disposable = { dispose: () => void };
 type BackendFlags = { isWebGPUBackend?: boolean; isWebGLBackend?: boolean };
@@ -217,7 +218,12 @@ export default function AmbientWorld() {
     const saveData = Boolean(connection?.saveData);
     const lowPower = (navigator.hardwareConcurrency || 8) <= 4 || saveData;
     const requestedBackend = new URLSearchParams(window.location.search).get("ambient");
-    const staticOnly = requestedBackend === "static" || reduceMotion.matches || saveData;
+    const runtimeAllowed = shouldStartAmbientRuntime({
+      requestedBackend,
+      reducedMotion: reduceMotion.matches,
+      saveData,
+    });
+    const staticOnly = !runtimeAllowed;
 
     const signalAmbientReady = () => {
       if (host.dataset.status === "ready") return;
@@ -246,14 +252,20 @@ export default function AmbientWorld() {
     host.dataset.entitySpeedMax = "0";
     host.dataset.jellySpeedMax = "0";
     host.dataset.coralAngleDeviation = "0";
-      host.dataset.simulationStep = "60hz";
-      host.dataset.telemetryRate = "4hz";
-      host.dataset.detailRate = "static";
+    host.dataset.simulationStep = "60hz";
+    host.dataset.telemetryRate = "4hz";
+    host.dataset.detailRate = "static";
+    host.dataset.runtime = "initializing";
     host.dataset.entityCount = "0";
     host.dataset.organismCount = "0";
     document.documentElement.dataset.ambientBackend = "static";
 
     if (staticOnly) {
+      host.dataset.runtime = requestedBackend === "static"
+        ? "explicit-static"
+        : reduceMotion.matches
+          ? "reduced-motion"
+          : "save-data";
       signalAmbientReady();
       return;
     }
@@ -284,9 +296,13 @@ export default function AmbientWorld() {
         renderer.setClearColor(0x000000, 0);
         renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, balanced ? 1.1 : 1.42));
         await renderer.init();
-      } catch {
+      } catch (error) {
         renderer.dispose();
-        if (!destroyed) signalAmbientReady();
+        if (!destroyed) {
+          host.dataset.runtime = "renderer-error";
+          console.warn("[ambient] Renderer initialization unavailable; using the static ocean.", error);
+          signalAmbientReady();
+        }
         return;
       }
 
@@ -300,6 +316,7 @@ export default function AmbientWorld() {
       host.dataset.backend = backendName;
       host.dataset.quality = balanced || backendName === "webgl2" ? "balanced" : "full";
       host.dataset.detailRate = balanced ? "15hz" : "20hz";
+      host.dataset.runtime = backendName;
       document.documentElement.dataset.ambientBackend = backendName;
 
       const scene = new THREE.Scene();
@@ -316,7 +333,7 @@ export default function AmbientWorld() {
       let lastTime = performance.now();
       let lastRenderedAt: number | null = null;
       let pageVisible = !document.hidden;
-      let motionAllowed = !reduceMotion.matches;
+      let motionAllowed: boolean = runtimeAllowed;
       let safeZones: SafeZone[] = [];
       let currentProfile = { ...defaultProfile };
       let targetProfile = { ...defaultProfile };
@@ -2062,7 +2079,11 @@ export default function AmbientWorld() {
       };
 
       const handleMotionPreference = () => {
-        motionAllowed = !reduceMotion.matches;
+        motionAllowed = shouldStartAmbientRuntime({
+          requestedBackend,
+          reducedMotion: reduceMotion.matches,
+          saveData,
+        });
         host.dataset.motion = motionAllowed ? "full" : "reduced";
         ensureRunning();
       };
@@ -2137,6 +2158,7 @@ export default function AmbientWorld() {
       data-render-cap="60fps"
       data-detail-rate="static"
       data-motion="full"
+      data-runtime="ssr"
       data-entity-count="0"
       data-organism-count="0"
       aria-hidden="true"
