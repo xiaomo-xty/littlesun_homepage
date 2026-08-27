@@ -10,8 +10,10 @@ export const site = {
     "关注高性能图形、游戏引擎工具与跨平台系统的工程师个人主页。",
   domain: "littlesun.space",
   blog: "https://blog.littlesun.space",
-  // ICP 备案号；公安备案（湘公网安备）通过后再补充
   icpBeian: "湘ICP备2026030115号-1",
+  publicSecurityBeian: "粤公网安备44030002016014号",
+  publicSecurityBeianUrl:
+    "https://beian.mps.gov.cn/#/query/webSearch?code=44030002016014",
   direction: ["高性能图形", "游戏引擎工具", "跨平台系统"],
   introduction:
     "我在真实项目里处理数据、性能和失败路径，也用 Rust + wgpu 把这些经验带向跨平台图形工具。",

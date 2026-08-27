@@ -144,9 +144,25 @@ import "../styles/home.css";
         <footer data-motion-item data-motion-kind="contact-footer">
           <strong>{site.title}</strong>
           <span>{site.domain}</span>
-          <a class="filing-link" href="https://beian.miit.gov.cn/" target="_blank" rel="noreferrer">
-            {site.icpBeian}
-          </a>
+          <div class="filing-links" aria-label="网站备案信息">
+            <a
+              class="filing-link"
+              href="https://beian.miit.gov.cn/"
+              target="_blank"
+              rel="noreferrer"
+            >
+              {site.icpBeian}
+            </a>
+            <a
+              class="filing-link public-security-filing"
+              href={site.publicSecurityBeianUrl}
+              target="_blank"
+              rel="noreferrer"
+            >
+              <img src="/public-security-filing.png" alt="" width="20" height="20" loading="lazy" />
+              <span>{site.publicSecurityBeian}</span>
+            </a>
+          </div>
         </footer>
         <SectionGuide target="#top" label="返回页面顶部" direction="up" />
       </div>
