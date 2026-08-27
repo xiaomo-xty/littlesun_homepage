@@ -1356,3 +1356,108 @@
 
 - 本次是性能与运动节奏修复，没有改变已确认的页面视觉结构和内容边界。
 - 姓名、人像、简历、邮箱、文章配图与真实文章链接仍为明确占位；`D:\project\blog` 未修改。
+
+## 2026-08-23 / v0.22 Runtime Performance Budget
+
+今天完成：
+
+- 按用户要求启动独立子 agent 做只读性能 review，确认静态路径重包、GPU 就绪阻塞、局部光照热点、高刷重复提交、全屏磨砂合成和动态偏好生命周期共 6 项问题。
+- 从 `develop` 创建 `perf/v0.22-runtime-budget`，保持 `main` 和博客项目不变。
+- 用轻量 Astro 启动器替换 Ambient React 的直接 `client:load`；static、低动态和 Save-Data 路径不再下载 Three/WebGPU 背景块。
+- 首次编舞改为从 SSR 静态海洋直接启动，WebGPU 在后台独立初始化并沿原有淡入规则接管，不再额外等待 `4800 ms` 故障计时器。
+- 局部光照加入平方距离早退和采样缓存；海流几何、海流颜色与粒子颜色按 full `20 Hz` / balanced `15 Hz` 刷新。
+- 高刷屏背景提交限制在约 `60 FPS`，固定 `60 Hz` 仿真、插值渲染和主要生物位置更新保持不变。
+- 去除全屏后处理层的 `backdrop-filter`，保留原有透明度与暗角；运行时启用低动态会停止 RAF 并显示静态海洋。
+- 新增 runtime policy、高刷调度和局部光照回归测试，测试总数从 38 增加到 43。
+
+当前证据：
+
+- v0.22 构建首页只直接引用 `1.35 KB gzip` 启动器，不直接引用约 `191.14 KB gzip` Three/WebGPU 块或 `14.23 KB gzip` AmbientWorld 块。
+- full 档局部光照细节由每秒约 342,000 次源距离检查降到约 114,000 次上限，balanced 档约 85,500 次；距离在半径外时不再执行开方。
+- 粒子颜色和海流动态缓冲上传频率相对 60 Hz 分别降低约 67%（full）与 75%（balanced）。
+- `bun test` 为 43 passed；`bun run check` 与生产构建通过。
+
+下一步最小动作：
+
+- 完成最终静态结构检查和 Git 门禁，提交性能分支并以 `--no-ff` 合回 `develop`；不自动合入 `main`。
+
+阻塞与证据：
+
+- 本轮浏览器控制层拒绝接管 localhost 标签，因此不记录新的浏览器 p95，避免把理论收益写成实测结果。
+- 姓名、人像、简历、邮箱、文章配图与真实文章链接仍为明确占位；`D:\project\blog` 未修改。
+
+## 2026-08-28 / Public Security Filing
+
+今天完成：
+
+- 从 `develop` 创建 `feature/public-security-filing`，补充已通过的公安联网备案信息。
+- 在联系区页脚并列展示 ICP 备案与公安备案，公安备案使用用户提供的官方图标、完整备案号和查询链接。
+- 备案链接组支持窄屏自然换行，并补充键盘焦点反馈；不改变联系区主体、背景仿真或首次加载编舞。
+
+验收边界：
+
+- 公安备案号为 `粤公网安备44030002016014号`，查询参数为 `44030002016014`。
+- 官方图标保存为站内静态资源，避免依赖第三方图片地址。
+- `bun test` 为 43 passed；`bun run check` 为 0 errors、0 warnings、0 hints；生产构建成功。
+- 本地 HTTP 验证确认首页、备案号、查询链接和 PNG 图标均正常；浏览器控制层拒绝访问 localhost，因此不记录桌面或移动截图验收。
+- 未修改 `D:\project\blog`。
+
+## 2026-08-28 / v0.23 Explicit Ambient Runtime
+
+今天完成：
+
+- 从 `develop` 创建 `fix/v0.23-explicit-ambient-runtime`，修复显式 WebGPU 预览仍可能被自动降级为静态背景的问题。
+- 将 `?ambient=webgpu` 与 `?ambient=webgl2` 定义为主动动态选择，覆盖浏览器 Save-Data 和 reduced-motion 自动降级；`?ambient=static` 仍始终保持静态。
+- 统一加载器与 Ambient React 运行时的策略判断，移除两层策略结果不一致的可能。
+- 为动态模块失败、渲染器初始化失败和成功后端补充 `data-runtime` 状态；渲染器失败时输出明确控制台警告，不再静默变成静态海洋。
+
+当前证据：
+
+- 新增显式动态覆盖回归测试，`bun test` 为 44 passed。
+- `bun run check` 为 0 errors、0 warnings、0 hints；生产构建成功；`git diff --check` 通过。
+- 默认无参数访问仍尊重低动态和 Save-Data，性能预算路径不变。
+- 浏览器控制层拒绝访问 localhost，因此动态视觉结果需在已打开的本地预览标签刷新确认。
+- 未修改 `D:\project\blog`。
+
+## 2026-08-28 / v0.24 Ambient Runtime Diagnostics
+
+今天完成：
+
+- 从 `develop` 创建 `fix/v0.24-ambient-runtime-diagnostics`，加入仅由 `?debug=1` 启用的背景运行时诊断面板。
+- 面板显示请求后端、实际后端、运行状态、动态偏好、仿真 tick、WebGPU 暴露状态与最近错误；正常访问不创建面板或诊断定时器。
+- 通过用户截图确认实际错误为 `Uncaught TypeError: jsxDEV is not a function`，并排除 WebGPU、Save-Data、reduced-motion 与页面可见性问题。
+- 确认开发服务器运行期间执行生产检查/构建后，共享的 `node_modules/.vite` 缓存包含 production `react/jsx-dev-runtime`，而开发编译结果调用 `jsxDEV`，导致 Ambient React 组件挂载失败。
+- 停止旧开发服务器，保留并移走错误缓存，使用 `astro dev --force` 重建开发缓存；重新检查确认 `react-jsx-dev-runtime.development.js` 被加载且 `jsxDEV` 为函数，用户确认动态海洋恢复。
+
+当前证据：
+
+- 故障时为 `backend: static / runtime: runtime-error / simulation tick: 0`；修复后动态背景恢复。
+- `bun test` 为 44 passed；`bun run check` 为 0 errors、0 warnings、0 hints；`git diff --check` 通过。
+- 未修改 `D:\project\blog`。
+
+## 2026-08-28 / v0.25 Scroll Frame Budget
+
+今天完成：
+
+- 从 `develop` 创建 `perf/v0.25-scroll-frame-budget`，在不削减视觉效果、生物/粒子数量、动画幅度和 `60 Hz` 逻辑频率的前提下完成滚动性能审查。
+- 将海豚约 815 个顶点的逐顶点 frame 对象采样改为 7 段脊柱缓存、预计算顶点绑定和 Float32 位置缓冲直写；固定步进复用 Float64 角度工作区。
+- 取消会在 90 Hz / 144 Hz 屏幕上分别混叠到约 45 / 48 FPS 的固定 `60 FPS` 提交门限；渲染跟随显示刷新率，仿真仍固定 `60 Hz` 并保持插值。
+- Hero、项目卡待机视差和打字机改为由区块可见性拥有生命周期；扫光、翻页引导、联系信号和离屏模糊/合成层同步门控。
+- 区块过渡缓存 motion 节点和 stagger 索引，跳过未变化状态；延迟 React island 在 hydration 完成后再接收 motion 属性，消除项目和文章的 hydration mismatch。
+- 修复 Ambient 手工 hydration 根节点前的空白文本竞争，SSR 静态海洋可被原地接管，不再整树重建。
+- 正常访问关闭背景遥测 DOM 写入；`?debug=1` 增加 FPS、平均/最大帧间隔和超预算帧计数。
+- 新增 `docs/V0.25_SCROLL_FRAME_BUDGET.md`，记录热区、决策、实测和范围边界。
+
+当前证据：
+
+- `bun test` 为 46 passed；缓存变形与原采样器达到 Float32 输出一致，复用工作区与原脊柱轨迹逐点一致。
+- `bun run check` 检查 32 个文件，为 0 errors、0 warnings、0 hints；生产构建成功生成 2 个静态路由。
+- 桌面 WebGPU 连续滚动样本为 `59.9-60.0 FPS`、平均 `16.67-16.69 ms`、最大 `16.7-16.9 ms`，超过 `20 ms` 的帧为 0。
+- `375 x 844` 移动 WebGPU 为 balanced 档，`59.9 FPS / 16.69 ms`，最大 `16.80 ms`，超过 `20 ms` 的帧为 0，横向溢出为 0。
+- 首屏、项目和文章延迟 hydration、往返入退场及离屏动画启停均通过，干净加载控制台无 warning 或 error。
+
+范围边界：
+
+- 未修改已确认的视觉结构、动效参数、背景数量、交互规则、内容和外部链接。
+- 受控浏览器本身为 60 Hz；90/120/144 Hz 的混叠路径已从实现中移除，发布前仍建议在目标高刷与低功耗真机上做一次主观滚动检查。
+- 未修改 `D:\project\blog`。

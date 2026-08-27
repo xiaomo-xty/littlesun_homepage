@@ -8,18 +8,22 @@ import {
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three/webgpu";
 import {
-  DOLPHIN_BODY_LENGTH,
+  DOLPHIN_JOINT_LENGTHS,
   advanceDolphinPathStream,
   advanceDolphinSpine,
   advanceRepulsionOffset,
   calculateSimulationSubsteps,
   createDolphinPathStream,
   createDolphinSpine,
+  createDolphinSpineFrameCache,
+  createDolphinVertexBindings,
+  deformDolphinPositions,
   sampleDolphinBezierPath,
-  sampleSpineFrame,
+  updateDolphinSpineFrameCache,
   type DolphinPathStream,
   type DolphinRoute,
   type DolphinSpinePoint,
+  type DolphinVertexBindings,
   type RepulsionState,
 } from "../lib/dolphinSimulation";
 import {
@@ -100,6 +104,8 @@ type FlowLine = {
 type DolphinPart = {
   attribute: THREE.BufferAttribute;
   basePositions: Float32Array;
+  targetPositions: Float32Array;
+  bindings: DolphinVertexBindings;
 };
 
 function seededRandom(seed: number) {
@@ -328,6 +334,8 @@ export default function CreatureDemo() {
       let pulse = 0;
       let dolphinScale = mobile ? 0.56 : 0.9;
       let dolphinSpine: DolphinSpinePoint[] = createDolphinSpine({ x: 0, y: 0 }, 0, dolphinScale);
+      const dolphinFrameCache = createDolphinSpineFrameCache(dolphinSpine.length);
+      const dolphinAngleWorkspace = new Float64Array(dolphinSpine.length - 1);
       const dolphinHead = new THREE.Vector2();
       const dolphinForward = new THREE.Vector2(1, 0);
       const pulseOrigin = new THREE.Vector2();
@@ -539,9 +547,12 @@ export default function CreatureDemo() {
       const addDynamicPart = (geometry: THREE.BufferGeometry, object: THREE.Object3D, renderOrder: number) => {
         const attribute = geometry.getAttribute("position") as THREE.BufferAttribute;
         attribute.setUsage(THREE.DynamicDrawUsage);
+        const basePositions = new Float32Array(attribute.array as ArrayLike<number>);
         dolphinParts.push({
           attribute,
-          basePositions: new Float32Array(attribute.array as ArrayLike<number>),
+          basePositions,
+          targetPositions: attribute.array as Float32Array,
+          bindings: createDolphinVertexBindings(basePositions, DOLPHIN_JOINT_LENGTHS.length + 1),
         });
         object.renderOrder = renderOrder;
         object.frustumCulled = false;
@@ -646,33 +657,15 @@ export default function CreatureDemo() {
       };
 
       const updateDolphinGeometry = () => {
-        const modelScale = dolphinScale;
-        const headFrame = sampleSpineFrame(dolphinSpine, 0);
-        const tailFrame = sampleSpineFrame(dolphinSpine, 1);
+        updateDolphinSpineFrameCache(dolphinFrameCache, dolphinSpine);
         dolphinParts.forEach((part) => {
-          for (let index = 0; index < part.basePositions.length; index += 3) {
-            const baseX = part.basePositions[index];
-            const baseY = part.basePositions[index + 1] * modelScale;
-            const longitudinal = -baseX;
-            let frameSample;
-            let along = 0;
-            if (longitudinal < 0) {
-              frameSample = headFrame;
-              along = -longitudinal * modelScale;
-            } else if (longitudinal > DOLPHIN_BODY_LENGTH) {
-              frameSample = tailFrame;
-              along = -(longitudinal - DOLPHIN_BODY_LENGTH) * modelScale;
-            } else {
-              frameSample = sampleSpineFrame(dolphinSpine, longitudinal / DOLPHIN_BODY_LENGTH);
-            }
-            const x = frameSample.position.x
-              + frameSample.tangent.x * along
-              + frameSample.normal.x * baseY;
-            const y = frameSample.position.y
-              + frameSample.tangent.y * along
-              + frameSample.normal.y * baseY;
-            part.attribute.setXYZ(index / 3, x, y, part.basePositions[index + 2]);
-          }
+          deformDolphinPositions(
+            part.targetPositions,
+            part.basePositions,
+            part.bindings,
+            dolphinFrameCache,
+            dolphinScale,
+          );
           part.attribute.needsUpdate = true;
         });
       };
@@ -795,13 +788,15 @@ export default function CreatureDemo() {
           swimClock,
           delta,
           dolphinScale,
+          undefined,
+          undefined,
+          dolphinAngleWorkspace,
         );
       };
 
       const renderDolphin = () => {
-        const headFrame = sampleSpineFrame(dolphinSpine, 0);
-        dolphinForward.set(headFrame.tangent.x, headFrame.tangent.y);
         updateDolphinGeometry();
+        dolphinForward.set(dolphinFrameCache.tangentX[0], dolphinFrameCache.tangentY[0]);
       };
 
       const simulateJellies = (seconds: number, delta: number) => {

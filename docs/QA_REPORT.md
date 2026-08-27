@@ -954,3 +954,60 @@ v0.7 满足海洋静物、双主题眼睛修正、固定时间步、WebGPU 优�
 - `git diff --check`：通过。
 - `bun run build`：2 个静态路由构建成功。
 - 未修改 `D:\project\blog`。
+
+## 2026-08-23 / v0.22 运行时性能预算验收
+
+### 架构与传输
+
+- 首页 SSR 保留完整静态海洋，不依赖客户端 JavaScript 才能得到背景降级画面。
+- 生产 HTML 包含 `AmbientWorldLoader`，不再包含 AmbientWorld Astro island。
+- 生产 HTML 不直接引用 `AmbientWorld` 或 Three/WebGPU 动态块。
+- 启动器为 `1.35 KB gzip`；被延迟的 AmbientWorld 与 Three/WebGPU 块合计约 `205.4 KB gzip`。
+- runtime policy 覆盖默认、WebGPU、WebGL2、static、低动态和 Save-Data。
+
+### 调度与合成
+
+- 固定仿真保持 `60 Hz`，背景显示提交在 120/144 Hz 输入下稳定调度到每秒 59-61 帧。
+- 光照与海流细节使用 full `20 Hz` / balanced `15 Hz`，粒子位置矩阵仍随有效渲染帧更新。
+- 本地光照在半径外使用平方距离早退，半径内的衰减结果与原实现一致。
+- `data-light-source-count` 与其他遥测统一为 `4 Hz` DOM 写入。
+- 全视口后处理不再使用 `backdrop-filter`。
+- 页面隐藏和运行时低动态都会停止 RAF；恢复后清空 accumulator，避免追帧。
+
+### 自动化门禁
+
+- `bun test`：43 passed、0 failed。
+- `bun run check`：0 errors、0 warnings、0 hints。
+- `bun run build`：2 个静态路由构建成功。
+- `git diff --check`：通过。
+- 本轮没有可控浏览器 p95 数据，未用推算结果替代浏览器实测。
+- 未修改 `D:\project\blog`。
+
+## 2026-08-28 / v0.25 滚动帧预算验收
+
+### 性能与生命周期
+
+- 海豚缓存变形与原参考采样器的 Float32 输出一致；复用角度工作区与原脊柱求解结果逐点一致。
+- 固定逻辑仍为 `60 Hz`，渲染改为跟随显示器 RAF，不再在 90/144 Hz 设备产生 45/48 FPS 的周期性混叠。
+- Hero、项目卡、打字器和 CSS 循环均由所属区块可见性控制，离屏后停止，返回后恢复原效果。
+- 普通访问 `data-telemetry-rate="off"`，不创建诊断面板或 `250 ms` 诊断写入；`?debug=1` 可读取帧预算。
+- 首屏 Ambient、项目和文章均无 hydration mismatch；延迟 island 完成 hydration 后再接收入退场属性。
+
+### 浏览器矩阵
+
+| 场景 | 结果 |
+| --- | --- |
+| 桌面 / WebGPU / 首屏静置 | `59.9 FPS`，平均 `16.69 ms`，最大 `16.80 ms`，超过 `20 ms` 为 0 |
+| 桌面 / WebGPU / 连续上下滚动 | 10 组样本为 `59.9-60.0 FPS`，最大 `16.7-16.9 ms`，超过 `20 ms` 均为 0 |
+| 桌面 / Hero 离屏 | Typewriter 为 inactive，Hero sweep 为 `animation-name: none` |
+| 桌面 / 项目可见 | Project idle 与 card material sweep 恢复，项目/文章延迟 hydration 无告警 |
+| `375 x 844` / WebGPU | balanced 档，`59.9 FPS / 16.69 ms`，最大 `16.80 ms`，横向溢出为 0 |
+| 干净开发缓存 | WebGPU 为 `ready / webgpu`，warning 与 error 均为 0 |
+
+### 自动化门禁
+
+- `bun test`：46 passed、0 failed。
+- `bun run check`：32 个文件，0 errors、0 warnings、0 hints。
+- `bun run build`：2 个静态路由构建成功。
+- `git diff --check`：通过。
+- 未修改 `D:\project\blog`。

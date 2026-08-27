@@ -139,7 +139,7 @@ section[id] {
   transition:
     opacity 420ms cubic-bezier(0.22, 1, 0.36, 1),
     transform 560ms cubic-bezier(0.22, 1, 0.36, 1);
-  will-change: opacity, transform;
+  will-change: auto;
 }
 
 .reveal-ready [data-reveal][data-reveal-state="visible"] {
@@ -165,7 +165,7 @@ section[id] {
     opacity 360ms cubic-bezier(0.22, 1, 0.36, 1),
     transform 480ms cubic-bezier(0.22, 1, 0.36, 1);
   transition-delay: 0ms;
-  will-change: opacity, transform;
+  will-change: auto;
 }
 
 .reveal-ready [data-motion-item][data-motion-state="visible"] {

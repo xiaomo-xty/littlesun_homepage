@@ -93,6 +93,21 @@ describe("ambient entity rules", () => {
     expect(sampleLocalLightInfluence({ x: 0, y: 0 }, sources, 0.9)).toBe(0.9);
   });
 
+  test("local lights ignore distant sources without changing the falloff result", () => {
+    const sources = [
+      { x: 0, y: 0, radius: 2, intensity: 0.8 },
+      ...Array.from({ length: 64 }, (_, index) => ({
+        x: 100 + index,
+        y: -100 - index,
+        radius: 1,
+        intensity: 1,
+      })),
+    ];
+    const influence = sampleLocalLightInfluence({ x: 1, y: 0 }, sources, 1);
+
+    expect(influence).toBeCloseTo(0.4, 6);
+  });
+
   test("jelly pulse contracts quickly, relaxes slowly and closes continuously", () => {
     const resting = sampleJellyPulse(0);
     const contracted = sampleJellyPulse(0.18);
@@ -143,6 +158,24 @@ describe("ambient entity rules", () => {
       expect(pose.bellScaleY).toBeWithin(0.97, 1.07);
       expect(pose.tentacleWave).toBeWithin(0.006, 0.025);
     }
+  });
+
+  test("jelly samplers reuse caller-owned frame buffers", () => {
+    const pulse = { contraction: 0, thrust: 0 };
+    const pose = {
+      contraction: 0,
+      thrust: 0,
+      bellScaleX: 1,
+      bellScaleY: 1,
+      tentacleRootScaleX: 1,
+      tentacleRootY: 0,
+      tentacleWave: 0,
+    };
+
+    expect(sampleJellyPulse(0.09, pulse)).toBe(pulse);
+    expect(sampleJellyPose(0.09, 0.7, pose)).toBe(pose);
+    expect(pulse.thrust).toBeGreaterThan(0);
+    expect(pose.bellScaleX).toBeLessThan(1);
   });
 
   test("pointer force always points away from the cursor", () => {
