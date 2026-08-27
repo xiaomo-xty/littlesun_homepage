@@ -1418,3 +1418,19 @@
 - 默认无参数访问仍尊重低动态和 Save-Data，性能预算路径不变。
 - 浏览器控制层拒绝访问 localhost，因此动态视觉结果需在已打开的本地预览标签刷新确认。
 - 未修改 `D:\project\blog`。
+
+## 2026-08-28 / v0.24 Ambient Runtime Diagnostics
+
+今天完成：
+
+- 从 `develop` 创建 `fix/v0.24-ambient-runtime-diagnostics`，加入仅由 `?debug=1` 启用的背景运行时诊断面板。
+- 面板显示请求后端、实际后端、运行状态、动态偏好、仿真 tick、WebGPU 暴露状态与最近错误；正常访问不创建面板或诊断定时器。
+- 通过用户截图确认实际错误为 `Uncaught TypeError: jsxDEV is not a function`，并排除 WebGPU、Save-Data、reduced-motion 与页面可见性问题。
+- 确认开发服务器运行期间执行生产检查/构建后，共享的 `node_modules/.vite` 缓存包含 production `react/jsx-dev-runtime`，而开发编译结果调用 `jsxDEV`，导致 Ambient React 组件挂载失败。
+- 停止旧开发服务器，保留并移走错误缓存，使用 `astro dev --force` 重建开发缓存；重新检查确认 `react-jsx-dev-runtime.development.js` 被加载且 `jsxDEV` 为函数，用户确认动态海洋恢复。
+
+当前证据：
+
+- 故障时为 `backend: static / runtime: runtime-error / simulation tick: 0`；修复后动态背景恢复。
+- `bun test` 为 44 passed；`bun run check` 为 0 errors、0 warnings、0 hints；`git diff --check` 通过。
+- 未修改 `D:\project\blog`。
