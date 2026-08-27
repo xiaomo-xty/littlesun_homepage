@@ -10,9 +10,14 @@ import {
   calculateSimulationSubsteps,
   createDolphinPathStream,
   createDolphinSpine,
+  createDolphinSpineFrameCache,
+  createDolphinVertexBindings,
+  deformDolphinPositions,
   rotateAngleTowards,
   sampleDolphinBezierPath,
+  sampleSpineFrame,
   shortestAngleDelta,
+  updateDolphinSpineFrameCache,
   type CubicBezierSegment,
   type DolphinPathBounds,
   type DolphinPathStream,
@@ -64,6 +69,76 @@ function secondDerivative(segment: CubicBezierSegment, atEnd: boolean) {
 }
 
 describe("procedural dolphin simulation", () => {
+  test("cached spine deformation matches the reference frame sampler", () => {
+    const scale = 0.74;
+    const spine = createDolphinSpine({ x: 1.2, y: -0.4 }, 0.38, scale);
+    const workspace = new Float64Array(DOLPHIN_JOINT_LENGTHS.length);
+    advanceDolphinSpine(
+      spine,
+      { x: 1.34, y: -0.31 },
+      0.86,
+      1 / 60,
+      scale,
+      undefined,
+      undefined,
+      workspace,
+    );
+    const basePositions = new Float32Array([
+      0.24, 0.03, -0.1,
+      0, -0.11, 0,
+      -0.53, 0.18, 0.1,
+      -DOLPHIN_BODY_LENGTH * 0.5, -0.2, 0.2,
+      -DOLPHIN_BODY_LENGTH, 0.09, 0.3,
+      -(DOLPHIN_BODY_LENGTH + 0.31), -0.04, 0.4,
+    ]);
+    const target = new Float32Array(basePositions.length);
+    const cache = createDolphinSpineFrameCache(spine.length);
+    const bindings = createDolphinVertexBindings(basePositions, spine.length);
+    updateDolphinSpineFrameCache(cache, spine);
+    deformDolphinPositions(target, basePositions, bindings, cache, scale);
+
+    for (let offset = 0; offset < basePositions.length; offset += 3) {
+      const longitudinal = -basePositions[offset];
+      const frame = sampleSpineFrame(
+        spine,
+        Math.max(0, Math.min(1, longitudinal / DOLPHIN_BODY_LENGTH)),
+      );
+      const along = longitudinal < 0
+        ? -longitudinal * scale
+        : longitudinal > DOLPHIN_BODY_LENGTH
+          ? -(longitudinal - DOLPHIN_BODY_LENGTH) * scale
+          : 0;
+      const normal = basePositions[offset + 1] * scale;
+      const reference = new Float32Array([
+        frame.position.x + frame.tangent.x * along + frame.normal.x * normal,
+        frame.position.y + frame.tangent.y * along + frame.normal.y * normal,
+      ]);
+      expect(target[offset]).toBe(reference[0]);
+      expect(target[offset + 1]).toBe(reference[1]);
+      expect(target[offset + 2]).toBe(basePositions[offset + 2]);
+    }
+  });
+
+  test("reused angle workspace preserves spine simulation results", () => {
+    const cached = createDolphinSpine({ x: 0, y: 0 }, 0.2);
+    const reference = cached.map((point) => ({ ...point }));
+    const workspace = new Float64Array(DOLPHIN_JOINT_LENGTHS.length);
+
+    for (let step = 0; step < 180; step += 1) {
+      const head = {
+        x: step * 0.004,
+        y: Math.sin(step / 40) * 0.18,
+      };
+      advanceDolphinSpine(cached, head, step / 120, 1 / 120, 1, undefined, undefined, workspace);
+      advanceDolphinSpine(reference, head, step / 120, 1 / 120);
+    }
+
+    cached.forEach((point, index) => {
+      expect(point.x).toBeCloseTo(reference[index].x, 12);
+      expect(point.y).toBeCloseTo(reference[index].y, 12);
+    });
+  });
+
   const simulateAtFrameRate = (framesPerSecond: number, duration: number) => {
     const scale = 0.9;
     const frameDelta = 1 / framesPerSecond;

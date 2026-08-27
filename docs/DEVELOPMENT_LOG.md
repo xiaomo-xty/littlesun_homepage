@@ -1434,3 +1434,30 @@
 - 故障时为 `backend: static / runtime: runtime-error / simulation tick: 0`；修复后动态背景恢复。
 - `bun test` 为 44 passed；`bun run check` 为 0 errors、0 warnings、0 hints；`git diff --check` 通过。
 - 未修改 `D:\project\blog`。
+
+## 2026-08-28 / v0.25 Scroll Frame Budget
+
+今天完成：
+
+- 从 `develop` 创建 `perf/v0.25-scroll-frame-budget`，在不削减视觉效果、生物/粒子数量、动画幅度和 `60 Hz` 逻辑频率的前提下完成滚动性能审查。
+- 将海豚约 815 个顶点的逐顶点 frame 对象采样改为 7 段脊柱缓存、预计算顶点绑定和 Float32 位置缓冲直写；固定步进复用 Float64 角度工作区。
+- 取消会在 90 Hz / 144 Hz 屏幕上分别混叠到约 45 / 48 FPS 的固定 `60 FPS` 提交门限；渲染跟随显示刷新率，仿真仍固定 `60 Hz` 并保持插值。
+- Hero、项目卡待机视差和打字机改为由区块可见性拥有生命周期；扫光、翻页引导、联系信号和离屏模糊/合成层同步门控。
+- 区块过渡缓存 motion 节点和 stagger 索引，跳过未变化状态；延迟 React island 在 hydration 完成后再接收 motion 属性，消除项目和文章的 hydration mismatch。
+- 修复 Ambient 手工 hydration 根节点前的空白文本竞争，SSR 静态海洋可被原地接管，不再整树重建。
+- 正常访问关闭背景遥测 DOM 写入；`?debug=1` 增加 FPS、平均/最大帧间隔和超预算帧计数。
+- 新增 `docs/V0.25_SCROLL_FRAME_BUDGET.md`，记录热区、决策、实测和范围边界。
+
+当前证据：
+
+- `bun test` 为 46 passed；缓存变形与原采样器达到 Float32 输出一致，复用工作区与原脊柱轨迹逐点一致。
+- `bun run check` 检查 32 个文件，为 0 errors、0 warnings、0 hints；生产构建成功生成 2 个静态路由。
+- 桌面 WebGPU 连续滚动样本为 `59.9-60.0 FPS`、平均 `16.67-16.69 ms`、最大 `16.7-16.9 ms`，超过 `20 ms` 的帧为 0。
+- `375 x 844` 移动 WebGPU 为 balanced 档，`59.9 FPS / 16.69 ms`，最大 `16.80 ms`，超过 `20 ms` 的帧为 0，横向溢出为 0。
+- 首屏、项目和文章延迟 hydration、往返入退场及离屏动画启停均通过，干净加载控制台无 warning 或 error。
+
+范围边界：
+
+- 未修改已确认的视觉结构、动效参数、背景数量、交互规则、内容和外部链接。
+- 受控浏览器本身为 60 Hz；90/120/144 Hz 的混叠路径已从实现中移除，发布前仍建议在目标高刷与低功耗真机上做一次主观滚动检查。
+- 未修改 `D:\project\blog`。

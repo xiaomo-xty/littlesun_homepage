@@ -7,6 +7,25 @@ export type Vec2 = {
 
 export type DolphinSpinePoint = Vec2;
 
+export type DolphinSpineFrameCache = {
+  pointCount: number;
+  startX: Float64Array;
+  startY: Float64Array;
+  deltaX: Float64Array;
+  deltaY: Float64Array;
+  tangentX: Float64Array;
+  tangentY: Float64Array;
+  normalX: Float64Array;
+  normalY: Float64Array;
+};
+
+export type DolphinVertexBindings = {
+  segmentIndices: Uint8Array;
+  segmentAmounts: Float64Array;
+  alongFactors: Float64Array;
+  normalFactors: Float64Array;
+};
+
 export type RouteSample = {
   position: Vec2;
   velocity: Vec2;
@@ -128,15 +147,20 @@ export function advanceDolphinSpine(
   scale = 1,
   lengths: readonly number[] = DOLPHIN_JOINT_LENGTHS,
   maximumBends: readonly number[] = DOLPHIN_MAX_BENDS,
+  previousSegmentAngles = new Float64Array(lengths.length),
 ) {
   if (points.length !== lengths.length + 1) {
     throw new Error("Dolphin spine point count must match its joint lengths");
   }
 
-  const previousSegmentAngles = points.slice(1).map((point, index) => Math.atan2(
-    point.y - points[index].y,
-    point.x - points[index].x,
-  ));
+  if (previousSegmentAngles.length < lengths.length) {
+    throw new Error("Dolphin angle workspace must match its joint lengths");
+  }
+  for (let index = 0; index < lengths.length; index += 1) {
+    const point = points[index + 1];
+    const parent = points[index];
+    previousSegmentAngles[index] = Math.atan2(point.y - parent.y, point.x - parent.x);
+  }
   points[0].x = head.x;
   points[0].y = head.y;
   let parentBehindAngle: number | undefined;
@@ -529,4 +553,113 @@ export function sampleSpineFrame(points: readonly DolphinSpinePoint[], progress:
     tangent,
     normal: { x: -tangent.y, y: tangent.x },
   };
+}
+
+export function createDolphinSpineFrameCache(pointCount: number): DolphinSpineFrameCache {
+  if (pointCount < 2) throw new Error("Dolphin spine requires at least two points");
+  const segmentCount = pointCount - 1;
+  return {
+    pointCount,
+    startX: new Float64Array(segmentCount),
+    startY: new Float64Array(segmentCount),
+    deltaX: new Float64Array(segmentCount),
+    deltaY: new Float64Array(segmentCount),
+    tangentX: new Float64Array(segmentCount),
+    tangentY: new Float64Array(segmentCount),
+    normalX: new Float64Array(segmentCount),
+    normalY: new Float64Array(segmentCount),
+  };
+}
+
+export function updateDolphinSpineFrameCache(
+  cache: DolphinSpineFrameCache,
+  points: readonly DolphinSpinePoint[],
+) {
+  if (points.length !== cache.pointCount) {
+    throw new Error("Dolphin frame cache must match its spine point count");
+  }
+
+  for (let index = 0; index < points.length - 1; index += 1) {
+    const front = points[index];
+    const back = points[index + 1];
+    const backwardX = back.x - front.x;
+    const backwardY = back.y - front.y;
+    const length = Math.max(0.0001, Math.hypot(backwardX, backwardY));
+    const tangentX = -backwardX / length;
+    const tangentY = -backwardY / length;
+    cache.startX[index] = front.x;
+    cache.startY[index] = front.y;
+    cache.deltaX[index] = backwardX;
+    cache.deltaY[index] = backwardY;
+    cache.tangentX[index] = tangentX;
+    cache.tangentY[index] = tangentY;
+    cache.normalX[index] = -tangentY;
+    cache.normalY[index] = tangentX;
+  }
+
+  return cache;
+}
+
+export function createDolphinVertexBindings(
+  basePositions: ArrayLike<number>,
+  pointCount: number,
+  bodyLength = DOLPHIN_BODY_LENGTH,
+): DolphinVertexBindings {
+  if (pointCount < 2) throw new Error("Dolphin spine requires at least two points");
+  const vertexCount = Math.floor(basePositions.length / 3);
+  const segmentCount = pointCount - 1;
+  const segmentIndices = new Uint8Array(vertexCount);
+  const segmentAmounts = new Float64Array(vertexCount);
+  const alongFactors = new Float64Array(vertexCount);
+  const normalFactors = new Float64Array(vertexCount);
+
+  for (let vertex = 0; vertex < vertexCount; vertex += 1) {
+    const offset = vertex * 3;
+    const longitudinal = -basePositions[offset];
+    const progress = clamp(longitudinal / bodyLength, 0, 1);
+    const scaled = progress * segmentCount;
+    const segmentIndex = Math.min(segmentCount - 1, Math.floor(scaled));
+    segmentIndices[vertex] = segmentIndex;
+    segmentAmounts[vertex] = Math.min(1, scaled - segmentIndex);
+    alongFactors[vertex] = longitudinal < 0
+      ? -longitudinal
+      : longitudinal > bodyLength
+        ? -(longitudinal - bodyLength)
+        : 0;
+    normalFactors[vertex] = basePositions[offset + 1];
+  }
+
+  return { segmentIndices, segmentAmounts, alongFactors, normalFactors };
+}
+
+export function deformDolphinPositions(
+  targetPositions: Float32Array,
+  basePositions: Float32Array,
+  bindings: DolphinVertexBindings,
+  cache: DolphinSpineFrameCache,
+  scale: number,
+) {
+  const vertexCount = bindings.segmentIndices.length;
+  if (targetPositions.length < vertexCount * 3 || basePositions.length < vertexCount * 3) {
+    throw new Error("Dolphin position buffers must match their vertex bindings");
+  }
+
+  for (let vertex = 0; vertex < vertexCount; vertex += 1) {
+    const offset = vertex * 3;
+    const segment = bindings.segmentIndices[vertex];
+    const amount = bindings.segmentAmounts[vertex];
+    const along = bindings.alongFactors[vertex] * scale;
+    const normal = bindings.normalFactors[vertex] * scale;
+    const frameX = cache.startX[segment] + cache.deltaX[segment] * amount;
+    const frameY = cache.startY[segment] + cache.deltaY[segment] * amount;
+    targetPositions[offset] = frameX
+      + cache.tangentX[segment] * along
+      + cache.normalX[segment] * normal;
+    targetPositions[offset + 1] = frameY
+      + cache.tangentY[segment] * along
+      + cache.normalY[segment] * normal;
+    targetPositions[offset + 2] = basePositions[offset + 2];
+  }
+
+  return targetPositions;
 }

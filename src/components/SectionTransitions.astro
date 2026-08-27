@@ -3,18 +3,39 @@
   if (document.documentElement.dataset.sectionTransitions === "ready") return;
   document.documentElement.dataset.sectionTransitions = "ready";
   const observed = new Map<Element, number>();
+  const motionItems = new Map<HTMLElement, HTMLElement[]>();
+  const pendingIslands = new Set(document.querySelectorAll<HTMLElement>("astro-island[ssr]"));
+  const pendingPresences = new Map<HTMLElement, boolean>();
   const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+  const isHydrated = (item: HTMLElement) => {
+    const island = item.closest<HTMLElement>("astro-island");
+    return !island || !pendingIslands.has(island);
+  };
+
+  const refreshMotionItems = (element: HTMLElement) => {
+    const items = Array.from(element.querySelectorAll<HTMLElement>("[data-motion-item]"));
+    items.forEach((item, index) => {
+      if (isHydrated(item)) item.style.setProperty("--motion-index", String(index));
+    });
+    motionItems.set(element, items);
+    return items;
+  };
 
   const setMotionState = (element: HTMLElement, visible: boolean) => {
     const state = visible ? "visible" : "hidden";
-    element.querySelectorAll<HTMLElement>("[data-motion-item]").forEach((item, index) => {
-      item.dataset.motionState = state;
-      item.style.setProperty("--motion-index", String(index));
+    const items = motionItems.get(element) || [];
+    items.forEach((item) => {
+      if (isHydrated(item)) item.dataset.motionState = state;
     });
   };
 
   const setPresence = (element: HTMLElement, visible: boolean) => {
+    if (!isHydrated(element)) {
+      pendingPresences.set(element, visible);
+      return;
+    }
     const state = visible ? "visible" : "hidden";
+    if (element.dataset.revealState === state) return;
     element.dataset.revealState = state;
     setMotionState(element, visible);
     window.dispatchEvent(new CustomEvent("homepage:section-presence", {
@@ -25,8 +46,34 @@
     }));
   };
 
+  const sections = Array.from(document.querySelectorAll<HTMLElement>("[data-reveal]"));
+  sections.forEach(refreshMotionItems);
+
+  const hydrationObserver = new MutationObserver((records) => {
+    records.forEach((record) => {
+      const island = record.target as HTMLElement;
+      if (island.hasAttribute("ssr")) return;
+      window.requestAnimationFrame(() => window.requestAnimationFrame(() => {
+        pendingIslands.delete(island);
+        if (pendingIslands.size === 0) hydrationObserver.disconnect();
+        const section = island.closest<HTMLElement>("[data-reveal]");
+        if (!section) return;
+        refreshMotionItems(section);
+        const visible = pendingPresences.get(section)
+          ?? section.dataset.revealState === "visible";
+        pendingPresences.delete(section);
+        const state = visible ? "visible" : "hidden";
+        if (section.dataset.revealState === state) setMotionState(section, visible);
+        else setPresence(section, visible);
+      }));
+    });
+  });
+  pendingIslands.forEach((island) => {
+    hydrationObserver.observe(island, { attributes: true, attributeFilter: ["ssr"] });
+  });
+
   const revealImmediately = () => {
-    document.querySelectorAll<HTMLElement>("[data-reveal]").forEach((element) => {
+    sections.forEach((element) => {
       const timer = observed.get(element);
       if (timer) window.clearTimeout(timer);
       setPresence(element, true);
@@ -59,7 +106,7 @@
       rootMargin: "-8% 0px -14% 0px",
     });
 
-    document.querySelectorAll<HTMLElement>("[data-reveal]").forEach((element) => {
+    sections.forEach((element) => {
       const rect = element.getBoundingClientRect();
       const visible = rect.bottom > window.innerHeight * 0.08
         && rect.top < window.innerHeight * 0.86;
